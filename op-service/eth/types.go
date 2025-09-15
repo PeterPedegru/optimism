@@ -615,6 +615,8 @@ type SystemConfig struct {
 	OperatorFeeParams Bytes32 `json:"operatorFeeParams"`
 	// MinBaseFee identifies the minimum base fee.
 	MinBaseFee uint64 `json:"minBaseFee"`
+	// DAFootprintGasScalar identifies the DA footprint gas scalar.
+	DAFootprintGasScalar uint16 `json:"daFootprintGasScalar"`
 	// More fields can be added for future SystemConfig versions.
 
 	// MarshalPreHolocene indicates whether or not this struct should be
@@ -622,6 +624,14 @@ type SystemConfig struct {
 	// not marshal the EIP1559Params field. The presence of this field in
 	// pre-Holocene codebases causes the rollup config to be rejected.
 	MarshalPreHolocene bool `json:"-"`
+}
+
+func (sysCfg *SystemConfig) SetDAFootprintGasScalar(daFootprintGasScalar uint16) {
+	if daFootprintGasScalar == 0 {
+		sysCfg.DAFootprintGasScalar = 400
+	} else {
+		sysCfg.DAFootprintGasScalar = daFootprintGasScalar
+	}
 }
 
 func (sysCfg SystemConfig) MarshalJSON() ([]byte, error) {

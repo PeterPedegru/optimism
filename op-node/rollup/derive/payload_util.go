@@ -107,5 +107,9 @@ func PayloadToSystemConfig(rollupCfg *rollup.Config, payload *eth.ExecutionPaylo
 			Constant: info.OperatorFeeConstant,
 		})
 	}
+
+	if rollupCfg.IsJovian(uint64(payload.Timestamp)) {
+		r.SetDAFootprintGasScalar(info.DAFootprintGasScalar)
+	}
 	return r, nil
 }
