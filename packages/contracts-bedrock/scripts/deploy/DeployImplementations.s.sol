@@ -600,7 +600,8 @@ contract DeployImplementations is Script {
         IOPContractsManagerV2 impl = IOPContractsManagerV2(
             DeployUtils.createDeterministic({
                 _name: "OPContractsManager.sol:OPContractsManagerV2",
-                _args: DeployUtils.encodeConstructor(abi.encodeCall(IOPContractsManagerV2.__constructor__, (_output.opcmContractsContainer))
+                _args: DeployUtils.encodeConstructor(
+                    abi.encodeCall(IOPContractsManagerV2.__constructor__, (_output.opcmContractsContainer))
                 ),
                 _salt: _salt
             })

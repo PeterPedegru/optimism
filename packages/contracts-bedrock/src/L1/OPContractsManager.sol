@@ -1680,48 +1680,27 @@ contract OPContractsManagerInteropMigrator is OPContractsManagerBase {
 }
 
 contract OPContractsManagerV2 is OPContractsManagerBase {
+    /// @notice Configuration for the FaultDisputeGame.
     struct FaultDisputeGameConfig {
         Claim absolutePrestate;
     }
 
+    /// @notice Configuration for the PermissionedDisputeGame.
     struct PermissionedDisputeGameConfig {
         Claim absolutePrestate;
         address proposer;
         address challenger;
     }
 
+    /// @notice Generic dispute game configuration data.
     struct DisputeGameConfig {
+        bool enabled;
+        uint256 initBond;
         GameType gameType;
         bytes gameArgs;
     }
 
-    struct LegacyGameConfig {
-        uint256 disputeMaxGameDepth;
-        uint256 disputeSplitDepth;
-        Duration disputeClockExtension;
-        Duration disputeMaxClockDuration;
-    }
-
-    struct SystemRoles {
-        address proxyAdminOwner;
-        address systemConfigOwner;
-        address unsafeBlockSigner;
-        address batcher;
-    }
-
-    struct L2SystemConfig {
-        uint32 basefeeScalar;
-        uint32 blobBasefeeScalar;
-        uint64 gasLimit;
-        uint256 l2ChainId;
-        IResourceMetering.ResourceConfig resourceConfig;
-    }
-
-    struct AnchorStateConfig {
-        Proposal startingAnchorRoot;
-        GameType startingRespectedGameType;
-    }
-
+    /// @notice Contracts that represent the full chain system.
     struct ChainContracts {
         ISystemConfig systemConfig;
         IProxyAdmin proxyAdmin;
@@ -1737,21 +1716,41 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
         IDelayedWETH delayedWETH;
     }
 
+    /// @notice Full chain management configuration.
     struct FullConfig {
+        // Basic deployment configuration.
         string saltMixer;
-        SystemRoles roles;
-        L2SystemConfig l2SystemConfig;
-        DisputeGameConfig[] disputeGameConfigs;
-        AnchorStateConfig anchorStateConfig;
         ISuperchainConfig superchainConfig;
-        LegacyGameConfig legacyGameConfig;
+        // System role configuration.
+        address proxyAdminOwner;
+        address systemConfigOwner;
+        address unsafeBlockSigner;
+        address batcher;
+        // Anchor state configuration.
+        Proposal startingAnchorRoot;
+        GameType startingRespectedGameType;
+        // L2 system configuration.
+        uint32 basefeeScalar;
+        uint32 blobBasefeeScalar;
+        uint64 gasLimit;
+        uint256 l2ChainId;
+        IResourceMetering.ResourceConfig resourceConfig;
+        // Legacy game config.
+        uint256 disputeMaxGameDepth;
+        uint256 disputeSplitDepth;
+        Duration disputeClockExtension;
+        Duration disputeMaxClockDuration;
+        // Dispute game configuration.
+        DisputeGameConfig[] disputeGameConfigs;
     }
 
+    /// @notice Partial input required for an upgrade.
     struct UpgradeInput {
         ISystemConfig systemConfig;
         DisputeGameConfig[] disputeGameConfigs;
     }
 
+    /// @notice Helper struct for deploying proxies, keeps code cleaner.
     struct ProxyDeployArgs {
         IProxyAdmin proxyAdmin;
         IAddressManager addressManager;
@@ -1759,11 +1758,26 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
         string saltMixer;
     }
 
+    /// @notice Thrown when the SuperchainConfig needs to be upgraded.
     error OPContractsManagerV2_SuperchainConfigNeedsUpgrade();
+
+    /// @notice Thrown when an unsupported game type is provided.
     error OPContractsManagerV2_UnsupportedGameType();
+
+    /// @notice Thrown when a proxy load returns bad data.
+    error OPContractsManagerV2_ProxyLoadBadReturn();
+
+    /// @notice Thrown when a proxy must be loaded but couldn't be.
     error OPContractsManagerV2_ProxyMustLoad();
-    error OPContractsManagerV2_ProxyLoadFailed();
+
+    /// @notice Thrown when a proxy load returns an unexpected error.
+    error OPContractsManagerV2_ProxyLoadBadError();
+
+    /// @notice Thrown when a proxy load ran out of gas.
     error OPContractsManagerV2_ProxyLoadNeedsGas();
+
+    /// @notice Thrown when an invalid game config is provided.
+    error OPContractsManagerV2_InvalidGameConfigs();
 
     /// @notice Address that represents that the existing proposer should be used.
     address internal constant USE_EXISTING_PROPOSER = address(0);
@@ -1772,15 +1786,14 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
     address internal constant USE_EXISTING_CHALLENGER = address(0);
 
     /// @param _container The OPContractsManagerContractsContainer contract.
-    constructor(OPContractsManagerContractsContainer _container) OPContractsManagerBase(_container) {}
+    constructor(OPContractsManagerContractsContainer _container) OPContractsManagerBase(_container) { }
 
     /// @notice Deploys a new chain from full config.
     /// @param _cfg The full config.
     /// @return The chain contracts.
-    function deploy(FullConfig memory _cfg) public returns (ChainContracts memory) {
+    function deploy(FullConfig memory _cfg) external returns (ChainContracts memory) {
         // Build the chain world.
-        ChainContracts memory cts =
-            _buildChainWorld(ISystemConfig(address(0)), _cfg.l2SystemConfig.l2ChainId, _cfg.saltMixer, false);
+        ChainContracts memory cts = _buildChainWorld(ISystemConfig(address(0)), _cfg.l2ChainId, _cfg.saltMixer, false);
 
         // Execute the deployment.
         return _execute(_cfg, cts, true);
@@ -1789,7 +1802,7 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
     /// @notice Upgrades a chain based on the upgrade input.
     /// @param _inp The upgrade input.
     /// @return The chain contracts.
-    function upgrade(UpgradeInput memory _inp) public returns (ChainContracts memory) {
+    function upgrade(UpgradeInput memory _inp) external returns (ChainContracts memory) {
         // Build the chain world.
         ChainContracts memory cts =
             _buildChainWorld(_inp.systemConfig, _inp.systemConfig.l2ChainId(), "salt mixer", true);
@@ -1800,11 +1813,6 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
         // Execute the upgrade.
         return _execute(cfg, cts, false);
     }
-
-    function _assertValidConfig(FullConfig memory _cfg) internal pure {
-        // TODO: Implement.
-    }
-
 
     /// @notice Builds or loads the chain contracts from whatever exists.
     /// @param _systemConfig The SystemConfig contract.
@@ -1876,6 +1884,9 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
         // For every other contract, we load-or-build the proxy. Each contract has a theoretical
         // source where the address would be found. If the address isn't found there, we assume the
         // address needs to be constructed.
+        // NOTE: We call _loadOrBuildProxy for each contract (rather than iterating over some sort
+        // of array) because (1) it's far easier to implement in Solidity and (2) it makes the code
+        // easier to understand.
 
         // Load the L1CrossDomainMessenger.
         cts.l1CrossDomainMessenger = IL1CrossDomainMessenger(
@@ -2001,22 +2012,22 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
         FullConfig memory cfg;
 
         // Extract system roles.
-        cfg.roles.proxyAdminOwner = _cts.optimismPortal.proxyAdminOwner();
-        cfg.roles.systemConfigOwner = _cts.systemConfig.owner();
-        cfg.roles.batcher = address(uint160(uint256(_cts.systemConfig.batcherHash())));
-        cfg.roles.unsafeBlockSigner = _cts.systemConfig.unsafeBlockSigner();
+        cfg.proxyAdminOwner = _cts.optimismPortal.proxyAdminOwner();
+        cfg.systemConfigOwner = _cts.systemConfig.owner();
+        cfg.batcher = address(uint160(uint256(_cts.systemConfig.batcherHash())));
+        cfg.unsafeBlockSigner = _cts.systemConfig.unsafeBlockSigner();
 
         // Extract system config.
-        cfg.l2SystemConfig.basefeeScalar = _cts.systemConfig.basefeeScalar();
-        cfg.l2SystemConfig.blobBasefeeScalar = _cts.systemConfig.blobbasefeeScalar();
-        cfg.l2SystemConfig.gasLimit = _cts.systemConfig.gasLimit();
-        cfg.l2SystemConfig.l2ChainId = _cts.systemConfig.l2ChainId();
-        cfg.l2SystemConfig.resourceConfig = _cts.systemConfig.resourceConfig();
+        cfg.basefeeScalar = _cts.systemConfig.basefeeScalar();
+        cfg.blobBasefeeScalar = _cts.systemConfig.blobbasefeeScalar();
+        cfg.gasLimit = _cts.systemConfig.gasLimit();
+        cfg.l2ChainId = _cts.systemConfig.l2ChainId();
+        cfg.resourceConfig = _cts.systemConfig.resourceConfig();
 
         // Extract AnchorStateRegistry parameters.
         (Hash root, uint256 l2SequenceNumber) = _cts.anchorStateRegistry.getAnchorRoot();
-        cfg.anchorStateConfig.startingAnchorRoot = Proposal({ root: root, l2SequenceNumber: l2SequenceNumber });
-        cfg.anchorStateConfig.startingRespectedGameType = _cts.anchorStateRegistry.respectedGameType();
+        cfg.startingAnchorRoot = Proposal({ root: root, l2SequenceNumber: l2SequenceNumber });
+        cfg.startingRespectedGameType = _cts.anchorStateRegistry.respectedGameType();
 
         // Set dispute game configs.
         cfg.disputeGameConfigs = _inp.disputeGameConfigs;
@@ -2029,6 +2040,29 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
 
         // Return the full config.
         return cfg;
+    }
+
+    /// @notice Validates the deployment/upgrade config.
+    /// @param _cfg The full config.
+    function _assertValidConfig(FullConfig memory _cfg) internal pure {
+        // Start validating the dispute game configs. Put allowed game types here.
+        GameType[] memory validGameTypes = new GameType[](2);
+        validGameTypes[0] = GameTypes.CANNON;
+        validGameTypes[1] = GameTypes.PERMISSIONED_CANNON;
+
+        // We must have a config for each valid game type.
+        if (_cfg.disputeGameConfigs.length != validGameTypes.length) {
+            revert OPContractsManagerV2_InvalidGameConfigs();
+        }
+
+        // Simplest possible check, iterate over each provided config and confirm that it matches
+        // the game type array. This places a requirement on the user to order the configs properly
+        // but that's probably a good thing, keeps the config consistent.
+        for (uint256 i = 0; i < _cfg.disputeGameConfigs.length; i++) {
+            if (_cfg.disputeGameConfigs[i].gameType.raw() != validGameTypes[i].raw()) {
+                revert OPContractsManagerV2_InvalidGameConfigs();
+            }
+        }
     }
 
     /// @notice Executes the deployment/upgrade action.
@@ -2044,6 +2078,9 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
         internal
         returns (ChainContracts memory)
     {
+        // Validate the config.
+        _assertValidConfig(_cfg);
+
         // Load implementations.
         OPContractsManager.Implementations memory impls = implementations();
 
@@ -2077,6 +2114,9 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
                 abi.encodeCall(IOptimismPortal.initialize, (_cts.systemConfig, _cts.anchorStateRegistry))
             );
         }
+
+        // NOTE: Same general pattern, we call _resetAndInitialize for each contract rather than
+        // iterating over some sort of array because it's easier to implement and understand.
 
         // Update the ETHLockbox.
         IOptimismPortal[] memory portals = new IOptimismPortal[](1);
@@ -2158,20 +2198,19 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
             impls.anchorStateRegistryImpl,
             abi.encodeCall(
                 IAnchorStateRegistry.initialize,
-                (
-                    _cts.systemConfig,
-                    _cts.disputeGameFactory,
-                    _cfg.anchorStateConfig.startingAnchorRoot,
-                    _cfg.anchorStateConfig.startingRespectedGameType
-                )
+                (_cts.systemConfig, _cts.disputeGameFactory, _cfg.startingAnchorRoot, _cfg.startingRespectedGameType)
             )
         );
 
-        // TODO: This adds new games, but it doesn't unset any other games. Should it?
         // Update the DisputeGame config and implementations.
+        // NOTE: We assert in _assertValidConfig that we have a configuration for all valid game
+        // types so we can be confident that we're setting/unsetting everything we care about.
         for (uint256 i = 0; i < _cfg.disputeGameConfigs.length; i++) {
             _cts.disputeGameFactory.setImplementation(
-                _cfg.disputeGameConfigs[i].gameType, _makeGameImpl(_cfg, _cts, _cfg.disputeGameConfigs[i])
+                _cfg.disputeGameConfigs[i].gameType,
+                _cfg.disputeGameConfigs[i].enabled
+                    ? _makeGameImpl(_cfg, _cts, _cfg.disputeGameConfigs[i])
+                    : IDisputeGame(address(0))
             );
         }
 
@@ -2180,10 +2219,10 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
         // safer to only allow it if explicitly requested.
         if (_xfer) {
             // Transfer ownership of the DisputeGameFactory to the proxyAdminOwner.
-            _cts.disputeGameFactory.transferOwnership(address(_cfg.roles.proxyAdminOwner));
+            _cts.disputeGameFactory.transferOwnership(address(_cfg.proxyAdminOwner));
 
             // Transfer ownership of the ProxyAdmin to the proxyAdminOwner.
-            _cts.proxyAdmin.transferOwnership(_cfg.roles.proxyAdminOwner);
+            _cts.proxyAdmin.transferOwnership(_cfg.proxyAdminOwner);
         }
 
         // Return contracts as the execution output.
@@ -2221,8 +2260,13 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
 
         // Handle the result.
         if (success) {
+            // abi.decode will revert if the encoded data has non-zero bytes outside of the last 20
+            // bytes but won't revert if the data is longer than 32 bytes, this check is enough.
+            if (res.length != 32) {
+                revert OPContractsManagerV2_ProxyLoadBadReturn();
+            }
+
             // Success case is easy, this should decode properly.
-            // TODO: Stricter checks here.
             return abi.decode(res, (address));
         } else {
             // Handling the failure case well is important to making sure that this function is
@@ -2236,7 +2280,6 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
             // accidentally creating new proxies during an upgrade. Certain upgrades may need to
             // deploy new proxies for contracts that don't already exist, but we require that all
             // such cases come with a clear TODO that removes the allowance as soon as possible.
-            // TODO: Check for the TODO statement with semgrep.
             if (_mustLoad) {
                 revert OPContractsManagerV2_ProxyMustLoad();
             }
@@ -2245,13 +2288,12 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
             // address. These functions should not be reverting unless the function doesn't exist
             // or we ran out of gas (we'll handle that later). It's acceptable for the function not
             // to exist in certain upgrade paths, but if we get error data back then we hit some
-            // revert statement that we really should be hitting.
-            if (
-                res.length > 0
-                    && keccak256(res)
-                        != keccak256(abi.encodeWithSignature("Error(string)", "Proxy: implementation not initialized"))
-            ) {
-                revert OPContractsManagerV2_ProxyLoadFailed();
+            // revert statement that we really should be hitting. Only permitted error is
+            // "Proxy: implementation not initialized" from the Proxy contract. We use a hard-coded
+            // bytes32 to reduce code size.
+            if (res.length > 0 && keccak256(res) != 0x1bb64c673de4443083b87fa0508da7efbda546c3bbdd60add6117a438753ffa4)
+            {
+                revert OPContractsManagerV2_ProxyLoadBadError();
             }
 
             // Now we check that there's at least 100k gas left. We need this because only 63/64 of
@@ -2374,21 +2416,26 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
         return abi.encodeCall(
             ISystemConfig.initialize,
             (
-                _cfg.roles.systemConfigOwner,
-                _cfg.l2SystemConfig.basefeeScalar,
-                _cfg.l2SystemConfig.blobBasefeeScalar,
-                bytes32(uint256(uint160(_cfg.roles.batcher))),
-                _cfg.l2SystemConfig.gasLimit,
-                _cfg.roles.unsafeBlockSigner,
-                _cfg.l2SystemConfig.resourceConfig,
-                chainIdToBatchInboxAddress(_cfg.l2SystemConfig.l2ChainId),
+                _cfg.systemConfigOwner,
+                _cfg.basefeeScalar,
+                _cfg.blobBasefeeScalar,
+                bytes32(uint256(uint160(_cfg.batcher))),
+                _cfg.gasLimit,
+                _cfg.unsafeBlockSigner,
+                _cfg.resourceConfig,
+                chainIdToBatchInboxAddress(_cfg.l2ChainId),
                 addrs,
-                _cfg.l2SystemConfig.l2ChainId,
+                _cfg.l2ChainId,
                 _cfg.superchainConfig
             )
         );
     }
 
+    /// @notice Helper for creating dispute game implementations.
+    /// @param _cfg Full chain config.
+    /// @param _cts Chain contracts.
+    /// @param _gcfg Configuration for the dispute game to create.
+    /// @return The dispute game implementation.
     function _makeGameImpl(
         FullConfig memory _cfg,
         ChainContracts memory _cts,
@@ -2398,13 +2445,16 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
         returns (IDisputeGame)
     {
         // Grab the correct blueprints.
+        string memory gameName;
         address blueprint1;
         address blueprint2;
         OPContractsManager.Blueprints memory bps = blueprints();
         if (_gcfg.gameType.raw() == GameTypes.CANNON.raw()) {
+            gameName = "FaultDisputeGame";
             blueprint1 = bps.permissionlessDisputeGame1;
             blueprint2 = bps.permissionlessDisputeGame2;
         } else if (_gcfg.gameType.raw() == GameTypes.PERMISSIONED_CANNON.raw()) {
+            gameName = "PermissionedDisputeGame";
             blueprint1 = bps.permissionedDisputeGame1;
             blueprint2 = bps.permissionedDisputeGame2;
         } else {
@@ -2417,14 +2467,16 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
         // Deploy the game and return it.
         return IDisputeGame(
             Blueprint.deployFrom(
-                blueprint1,
-                blueprint2,
-                computeSalt(_cfg.l2SystemConfig.l2ChainId, _cfg.saltMixer, Strings.toString(_gcfg.gameType.raw())),
-                gameArgs
+                blueprint1, blueprint2, computeSalt(_cfg.l2ChainId, _cfg.saltMixer, gameName), gameArgs
             )
         );
     }
 
+    /// @notice Helper for creating game constructor arguments.
+    /// @param _cfg Full chain config.
+    /// @param _cts Chain contracts.
+    /// @param _gcfg Configuration for the dispute game to create.
+    /// @return The game constructor arguments.
     function _makeGameArgs(
         FullConfig memory _cfg,
         ChainContracts memory _cts,
@@ -2444,14 +2496,14 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
                         IFaultDisputeGame.GameConstructorParams({
                             gameType: _gcfg.gameType,
                             absolutePrestate: parsedInputArgs.absolutePrestate,
-                            maxGameDepth: _cfg.legacyGameConfig.disputeMaxGameDepth,
-                            splitDepth: _cfg.legacyGameConfig.disputeSplitDepth,
-                            clockExtension: _cfg.legacyGameConfig.disputeClockExtension,
-                            maxClockDuration: _cfg.legacyGameConfig.disputeMaxClockDuration,
+                            maxGameDepth: _cfg.disputeMaxGameDepth,
+                            splitDepth: _cfg.disputeSplitDepth,
+                            clockExtension: _cfg.disputeClockExtension,
+                            maxClockDuration: _cfg.disputeMaxClockDuration,
                             vm: IBigStepper(impls.mipsImpl),
                             weth: _cts.delayedWETH,
                             anchorStateRegistry: _cts.anchorStateRegistry,
-                            l2ChainId: _cfg.l2SystemConfig.l2ChainId
+                            l2ChainId: _cfg.l2ChainId
                         })
                     )
                 ),
@@ -2467,14 +2519,14 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
                         IFaultDisputeGame.GameConstructorParams({
                             gameType: _gcfg.gameType,
                             absolutePrestate: parsedInputArgs.absolutePrestate,
-                            maxGameDepth: _cfg.legacyGameConfig.disputeMaxGameDepth,
-                            splitDepth: _cfg.legacyGameConfig.disputeSplitDepth,
-                            clockExtension: _cfg.legacyGameConfig.disputeClockExtension,
-                            maxClockDuration: _cfg.legacyGameConfig.disputeMaxClockDuration,
+                            maxGameDepth: _cfg.disputeMaxGameDepth,
+                            splitDepth: _cfg.disputeSplitDepth,
+                            clockExtension: _cfg.disputeClockExtension,
+                            maxClockDuration: _cfg.disputeMaxClockDuration,
                             vm: IBigStepper(impls.mipsImpl),
                             weth: _cts.delayedWETH,
                             anchorStateRegistry: _cts.anchorStateRegistry,
-                            l2ChainId: _cfg.l2SystemConfig.l2ChainId
+                            l2ChainId: _cfg.l2ChainId
                         }),
                         parsedInputArgs.proposer,
                         parsedInputArgs.challenger
@@ -2876,21 +2928,31 @@ contract OPContractsManager is ISemver {
         cfg.saltMixer = _input.saltMixer;
 
         // Handle system roles.
-        cfg.roles.proxyAdminOwner = _input.roles.opChainProxyAdminOwner;
-        cfg.roles.systemConfigOwner = _input.roles.systemConfigOwner;
-        cfg.roles.unsafeBlockSigner = _input.roles.unsafeBlockSigner;
-        cfg.roles.batcher = _input.roles.batcher;
+        cfg.proxyAdminOwner = _input.roles.opChainProxyAdminOwner;
+        cfg.systemConfigOwner = _input.roles.systemConfigOwner;
+        cfg.unsafeBlockSigner = _input.roles.unsafeBlockSigner;
+        cfg.batcher = _input.roles.batcher;
 
         // Handle L2 system configuration.
-        cfg.l2SystemConfig.basefeeScalar = _input.basefeeScalar;
-        cfg.l2SystemConfig.blobBasefeeScalar = _input.blobBasefeeScalar;
-        cfg.l2SystemConfig.gasLimit = _input.gasLimit;
-        cfg.l2SystemConfig.l2ChainId = _input.l2ChainId;
-        cfg.l2SystemConfig.resourceConfig = Constants.DEFAULT_RESOURCE_CONFIG();
+        cfg.basefeeScalar = _input.basefeeScalar;
+        cfg.blobBasefeeScalar = _input.blobBasefeeScalar;
+        cfg.gasLimit = _input.gasLimit;
+        cfg.l2ChainId = _input.l2ChainId;
+        cfg.resourceConfig = Constants.DEFAULT_RESOURCE_CONFIG();
 
         // Handle dispute game configs.
-        cfg.disputeGameConfigs = new OPContractsManagerV2.DisputeGameConfig[](1);
+        cfg.disputeGameConfigs = new OPContractsManagerV2.DisputeGameConfig[](2);
+        cfg.disputeGameConfigs[1] = OPContractsManagerV2.DisputeGameConfig({
+            enabled: false, // NOTE: We currently disable FDG on first deploy.
+            initBond: 0, // NOTE: We currently disable FDG on first deploy.
+            gameType: GameTypes.CANNON,
+            gameArgs: abi.encode(
+                OPContractsManagerV2.FaultDisputeGameConfig({ absolutePrestate: _input.disputeAbsolutePrestate })
+            )
+        });
         cfg.disputeGameConfigs[0] = OPContractsManagerV2.DisputeGameConfig({
+            enabled: true,
+            initBond: 0, // NOTE: PDG gets a zero init bond for legacy deployments.
             gameType: GameTypes.PERMISSIONED_CANNON,
             gameArgs: abi.encode(
                 OPContractsManagerV2.PermissionedDisputeGameConfig({
@@ -2902,17 +2964,17 @@ contract OPContractsManager is ISemver {
         });
 
         // Handle anchor state configuration.
-        cfg.anchorStateConfig.startingAnchorRoot = abi.decode(_input.startingAnchorRoot, (Proposal));
-        cfg.anchorStateConfig.startingRespectedGameType = GameTypes.PERMISSIONED_CANNON;
+        cfg.startingAnchorRoot = abi.decode(_input.startingAnchorRoot, (Proposal));
+        cfg.startingRespectedGameType = GameTypes.PERMISSIONED_CANNON;
 
         // Handle SuperchainConfig.
         cfg.superchainConfig = _superchainConfig;
 
         // Handle legacy game configuration.
-        cfg.legacyGameConfig.disputeMaxGameDepth = _input.disputeMaxGameDepth;
-        cfg.legacyGameConfig.disputeSplitDepth = _input.disputeSplitDepth;
-        cfg.legacyGameConfig.disputeClockExtension = _input.disputeClockExtension;
-        cfg.legacyGameConfig.disputeMaxClockDuration = _input.disputeMaxClockDuration;
+        cfg.disputeMaxGameDepth = _input.disputeMaxGameDepth;
+        cfg.disputeSplitDepth = _input.disputeSplitDepth;
+        cfg.disputeClockExtension = _input.disputeClockExtension;
+        cfg.disputeMaxClockDuration = _input.disputeMaxClockDuration;
 
         // Return the full config.
         return cfg;
@@ -2923,29 +2985,54 @@ contract OPContractsManager is ISemver {
     /// @return The new UpgradeInput.
     function _toUpgradeInput(OpChainConfig memory _opChainConfig)
         internal
-        pure
+        view
         returns (OPContractsManagerV2.UpgradeInput memory)
     {
-        // Build the dispute game configs first. Since we're supporting the legacy system here
-        // we're only going to inject configs for FDG and PDG.
-        OPContractsManagerV2.DisputeGameConfig[] memory disputeGameConfigs = new OPContractsManagerV2.DisputeGameConfig[](2);
+        // Ugly, but we need to do it this way. Legacy upgrade function does NOT upgrade all
+        // available dispute games. If we provided all available games as dispute game configs then
+        // they'd all get upgraded. When using the legacy upgrade function like this we only want
+        // to upgrade the games that are configured in the existing system.
+
+        // Get the existing FaultDisputeGame and PermissionedDisputeGame addresses and their
+        // corresponding init bonds.
+        IDisputeGameFactory dgf = IDisputeGameFactory(_opChainConfig.systemConfigProxy.disputeGameFactory());
+        address fdg = address(dgf.gameImpls(GameTypes.CANNON));
+        address pdg = address(dgf.gameImpls(GameTypes.PERMISSIONED_CANNON));
+        uint256 fdgBond = dgf.initBonds(GameTypes.CANNON);
+        uint256 pdgBond = dgf.initBonds(GameTypes.PERMISSIONED_CANNON);
+
+        // Build the dispute game configs. OPCMv2 requires that we account for all available game
+        // types so that we're being explicit about what we want and what we don't want. Game types
+        // that aren't enabled technically don't need valid game args but it's easier to just
+        // provide them in this particular instance.
+        OPContractsManagerV2.DisputeGameConfig[] memory disputeGameConfigs =
+            new OPContractsManagerV2.DisputeGameConfig[](2);
         disputeGameConfigs[0] = OPContractsManagerV2.DisputeGameConfig({
+            enabled: fdg != address(0),
+            initBond: fdgBond,
             gameType: GameTypes.CANNON,
-            gameArgs: abi.encode(OPContractsManagerV2.FaultDisputeGameConfig({ absolutePrestate: _opChainConfig.absolutePrestate }))
+            gameArgs: abi.encode(
+                OPContractsManagerV2.FaultDisputeGameConfig({ absolutePrestate: _opChainConfig.absolutePrestate })
+            )
         });
         disputeGameConfigs[1] = OPContractsManagerV2.DisputeGameConfig({
+            enabled: pdg != address(0),
+            initBond: pdgBond,
             gameType: GameTypes.PERMISSIONED_CANNON,
             gameArgs: abi.encode(
                 OPContractsManagerV2.PermissionedDisputeGameConfig({
                     absolutePrestate: _opChainConfig.absolutePrestate,
                     proposer: address(0), // USE_EXISTING_PROPOSER
                     challenger: address(0) // USE_EXISTING_CHALLENGER
-                })
+                 })
             )
         });
 
         // Return the upgrade input.
-        return OPContractsManagerV2.UpgradeInput({ systemConfig: _opChainConfig.systemConfigProxy, disputeGameConfigs: disputeGameConfigs });
+        return OPContractsManagerV2.UpgradeInput({
+            systemConfig: _opChainConfig.systemConfigProxy,
+            disputeGameConfigs: disputeGameConfigs
+        });
     }
 
     /// @notice Helper that converts the new ChainContracts struct into the old DeployOutput.
