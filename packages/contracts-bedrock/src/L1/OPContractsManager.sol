@@ -1779,12 +1779,6 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
     /// @notice Thrown when an invalid game config is provided.
     error OPContractsManagerV2_InvalidGameConfigs();
 
-    /// @notice Address that represents that the existing proposer should be used.
-    address internal constant USE_EXISTING_PROPOSER = address(0);
-
-    /// @notice Address that represents that the existing challenger should be used.
-    address internal constant USE_EXISTING_CHALLENGER = address(0);
-
     /// @param _container The OPContractsManagerContractsContainer contract.
     constructor(OPContractsManagerContractsContainer _container) OPContractsManagerBase(_container) { }
 
