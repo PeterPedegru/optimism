@@ -22,7 +22,8 @@ import {
     IOPContractsManagerUpgrader,
     IOPContractsManagerContractsContainer,
     IOPContractsManagerInteropMigrator,
-    IOPContractsManagerStandardValidator
+    IOPContractsManagerStandardValidator,
+    IOPContractsManagerV2
 } from "interfaces/L1/IOPContractsManager.sol";
 import { IOptimismPortal2 as IOptimismPortal } from "interfaces/L1/IOptimismPortal2.sol";
 import { IOptimismPortalInterop } from "interfaces/L1/IOptimismPortalInterop.sol";
@@ -33,6 +34,7 @@ import { IL1ERC721Bridge } from "interfaces/L1/IL1ERC721Bridge.sol";
 import { IL1StandardBridge } from "interfaces/L1/IL1StandardBridge.sol";
 import { IOptimismMintableERC20Factory } from "interfaces/universal/IOptimismMintableERC20Factory.sol";
 import { IProxyAdmin } from "interfaces/universal/IProxyAdmin.sol";
+import { IStorageSetter } from "interfaces/universal/IStorageSetter.sol";
 import { IOPContractsManagerStandardValidator } from "interfaces/L1/IOPContractsManagerStandardValidator.sol";
 import { DeployUtils } from "scripts/libraries/DeployUtils.sol";
 import { Solarray } from "scripts/libraries/Solarray.sol";
@@ -64,6 +66,7 @@ contract DeployImplementations is Script {
         IOPContractsManagerUpgrader opcmUpgrader;
         IOPContractsManagerInteropMigrator opcmInteropMigrator;
         IOPContractsManagerStandardValidator opcmStandardValidator;
+        IOPContractsManagerV2 opcmV2;
         IDelayedWETH delayedWETHImpl;
         IOptimismPortal optimismPortalImpl;
         IOptimismPortalInterop optimismPortalInteropImpl;
@@ -79,6 +82,7 @@ contract DeployImplementations is Script {
         IAnchorStateRegistry anchorStateRegistryImpl;
         ISuperchainConfig superchainConfigImpl;
         IProtocolVersions protocolVersionsImpl;
+        IStorageSetter storageSetterImpl;
     }
 
     bytes32 internal _salt = DeployUtils.DEFAULT_SALT;
@@ -104,6 +108,7 @@ contract DeployImplementations is Script {
         deployMipsSingleton(_input, output_);
         deployDisputeGameFactoryImpl(output_);
         deployAnchorStateRegistryImpl(_input, output_);
+        deployStorageSetterImpl(output_);
 
         // Deploy the OP Contracts Manager with the new implementations set.
         deployOPContractsManager(_input, output_);
@@ -137,7 +142,8 @@ contract DeployImplementations is Script {
             disputeGameFactoryImpl: address(_output.disputeGameFactoryImpl),
             anchorStateRegistryImpl: address(_output.anchorStateRegistryImpl),
             delayedWETHImpl: address(_output.delayedWETHImpl),
-            mipsImpl: address(_output.mipsSingleton)
+            mipsImpl: address(_output.mipsSingleton),
+            storageSetterImpl: address(_output.storageSetterImpl)
         });
 
         deployOPCMBPImplsContainer(_input, _output, _blueprints, implementations);
@@ -146,6 +152,7 @@ contract DeployImplementations is Script {
         deployOPCMUpgrader(_output);
         deployOPCMInteropMigrator(_output);
         deployOPCMStandardValidator(_input, _output, implementations);
+        deployOPCMV2(_output);
 
         // Semgrep rule will fail because the arguments are encoded inside of a separate function.
         opcm_ = IOPContractsManager(
@@ -183,6 +190,7 @@ contract DeployImplementations is Script {
                     _output.opcmUpgrader,
                     _output.opcmInteropMigrator,
                     _output.opcmStandardValidator,
+                    _output.opcmV2,
                     _input.superchainConfigProxy,
                     _input.protocolVersionsProxy,
                     _input.superchainProxyAdmin,
@@ -586,6 +594,31 @@ contract DeployImplementations is Script {
         );
         vm.label(address(impl), "OPContractsManagerStandardValidatorImpl");
         _output.opcmStandardValidator = impl;
+    }
+
+    function deployOPCMV2(Output memory _output) private {
+        IOPContractsManagerV2 impl = IOPContractsManagerV2(
+            DeployUtils.createDeterministic({
+                _name: "OPContractsManager.sol:OPContractsManagerV2",
+                _args: DeployUtils.encodeConstructor(abi.encodeCall(IOPContractsManagerV2.__constructor__, (_output.opcmContractsContainer))
+                ),
+                _salt: _salt
+            })
+        );
+        vm.label(address(impl), "OPContractsManagerV2Impl");
+        _output.opcmV2 = impl;
+    }
+
+    function deployStorageSetterImpl(Output memory _output) private {
+        IStorageSetter impl = IStorageSetter(
+            DeployUtils.createDeterministic({
+                _name: "StorageSetter",
+                _args: DeployUtils.encodeConstructor(abi.encodeCall(IStorageSetter.__constructor__, ())),
+                _salt: _salt
+            })
+        );
+        vm.label(address(impl), "StorageSetterImpl");
+        _output.storageSetterImpl = impl;
     }
 
     function assertValidInput(Input memory _input) private pure {

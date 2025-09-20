@@ -23,6 +23,7 @@ import { IL1ERC721Bridge } from "interfaces/L1/IL1ERC721Bridge.sol";
 import { IL1StandardBridge } from "interfaces/L1/IL1StandardBridge.sol";
 import { IOptimismMintableERC20Factory } from "interfaces/universal/IOptimismMintableERC20Factory.sol";
 import { IETHLockbox } from "interfaces/L1/IETHLockbox.sol";
+import { IResourceMetering } from "interfaces/L1/IResourceMetering.sol";
 import { IOPContractsManagerStandardValidator } from "interfaces/L1/IOPContractsManagerStandardValidator.sol";
 
 interface IOPContractsManagerContractsContainer {
@@ -126,6 +127,103 @@ interface IOPContractsManagerInteropMigrator {
     function migrate(MigrateInput calldata _input) external;
 }
 
+interface IOPContractsManagerV2 {
+    struct FaultDisputeGameConfig {
+        Claim absolutePrestate;
+    }
+
+    struct PermissionedDisputeGameConfig {
+        Claim absolutePrestate;
+        address proposer;
+        address challenger;
+    }
+
+    struct DisputeGameConfig {
+        GameType gameType;
+        bytes gameArgs;
+    }
+
+    struct LegacyGameConfig {
+        uint256 disputeMaxGameDepth;
+        uint256 disputeSplitDepth;
+        Duration disputeClockExtension;
+        Duration disputeMaxClockDuration;
+    }
+
+    struct SystemRoles {
+        address proxyAdminOwner;
+        address systemConfigOwner;
+        address unsafeBlockSigner;
+        address batcher;
+    }
+
+    struct L2SystemConfig {
+        uint32 basefeeScalar;
+        uint32 blobBasefeeScalar;
+        uint64 gasLimit;
+        uint256 l2ChainId;
+        IResourceMetering.ResourceConfig resourceConfig;
+    }
+
+    struct AnchorStateConfig {
+        Proposal startingAnchorRoot;
+        GameType startingRespectedGameType;
+    }
+
+    struct ChainContracts {
+        ISystemConfig systemConfig;
+        IProxyAdmin proxyAdmin;
+        IAddressManager addressManager;
+        IL1CrossDomainMessenger l1CrossDomainMessenger;
+        IL1ERC721Bridge l1ERC721Bridge;
+        IL1StandardBridge l1StandardBridge;
+        IOptimismPortal2 optimismPortal;
+        IETHLockbox ethLockbox;
+        IOptimismMintableERC20Factory optimismMintableERC20Factory;
+        IDisputeGameFactory disputeGameFactory;
+        IAnchorStateRegistry anchorStateRegistry;
+        IDelayedWETH delayedWETH;
+    }
+
+    struct FullConfig {
+        string saltMixer;
+        SystemRoles roles;
+        L2SystemConfig l2SystemConfig;
+        DisputeGameConfig[] disputeGameConfigs;
+        AnchorStateConfig anchorStateConfig;
+        ISuperchainConfig superchainConfig;
+        LegacyGameConfig legacyGameConfig;
+    }
+
+    struct UpgradeInput {
+        ISystemConfig systemConfig;
+        DisputeGameConfig[] disputeGameConfigs;
+    }
+
+    error OPContractsManagerV2_SuperchainConfigNeedsUpgrade();
+    error OPContractsManagerV2_UnknownGameType();
+    error OPContractsManagerV2_UnsupportedGameType();
+    error OPContractsManagerV2_ProxyMustLoad();
+    error OPContractsManagerV2_ProxyLoadFailed();
+    error OPContractsManagerV2_ProxyLoadNeedsGas();
+
+    function __constructor__(IOPContractsManagerContractsContainer _container) external;
+
+    function deploy(
+        IOPContractsManager.DeployInput calldata _input,
+        ISuperchainConfig _superchainConfig,
+        address _deployer
+    )
+        external
+        returns (IOPContractsManager.DeployOutput memory);
+
+    function upgrade(IOPContractsManager.OpChainConfig[] memory _opChainConfigs) external;
+
+    function deploy(FullConfig memory _cfg) external returns (ChainContracts memory);
+
+    function upgrade(UpgradeInput memory _inp) external returns (ChainContracts memory);
+}
+
 interface IOPContractsManager {
     // -------- Structs --------
 
@@ -216,6 +314,7 @@ interface IOPContractsManager {
         address anchorStateRegistryImpl;
         address delayedWETHImpl;
         address mipsImpl;
+        address storageSetterImpl;
     }
 
     /// @notice The input required to identify a chain for upgrading.
@@ -305,6 +404,7 @@ interface IOPContractsManager {
         IOPContractsManagerUpgrader _opcmUpgrader,
         IOPContractsManagerInteropMigrator _opcmInteropMigrator,
         IOPContractsManagerStandardValidator _opcmStandardValidator,
+        IOPContractsManagerV2 _opcmV2,
         ISuperchainConfig _superchainConfig,
         IProtocolVersions _protocolVersions,
         IProxyAdmin _superchainProxyAdmin,
@@ -371,6 +471,8 @@ interface IOPContractsManager {
     function opcmInteropMigrator() external view returns (IOPContractsManagerInteropMigrator);
 
     function opcmStandardValidator() external view returns (IOPContractsManagerStandardValidator);
+
+    function opcmV2() external view returns (IOPContractsManagerV2);
 
     /// @notice Retrieves the development feature bitmap stored in this OPCM contract
     /// @return The development feature bitmap.

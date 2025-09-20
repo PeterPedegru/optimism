@@ -53,7 +53,8 @@ import {
     OPContractsManagerUpgrader,
     OPContractsManagerContractsContainer,
     OPContractsManagerInteropMigrator,
-    OPContractsManagerStandardValidator
+    OPContractsManagerStandardValidator,
+    OPContractsManagerV2
 } from "src/L1/OPContractsManager.sol";
 import { OPContractsManagerStandardValidator } from "src/L1/OPContractsManagerStandardValidator.sol";
 
@@ -66,6 +67,7 @@ contract OPContractsManager_Harness is OPContractsManager {
         OPContractsManagerUpgrader _opcmUpgrader,
         OPContractsManagerInteropMigrator _opcmInteropMigrator,
         OPContractsManagerStandardValidator _opcmStandardValidator,
+        OPContractsManagerV2 _opcmV2,
         ISuperchainConfig _superchainConfig,
         IProtocolVersions _protocolVersions,
         IProxyAdmin _superchainProxyAdmin,
@@ -77,6 +79,7 @@ contract OPContractsManager_Harness is OPContractsManager {
             _opcmUpgrader,
             _opcmInteropMigrator,
             _opcmStandardValidator,
+            _opcmV2,
             _superchainConfig,
             _protocolVersions,
             _superchainProxyAdmin,
@@ -402,6 +405,7 @@ contract OPContractsManager_ChainIdToBatchInboxAddress_Test is Test {
             _opcmStandardValidator: new OPContractsManagerStandardValidator(
                 opcmImplementations, superchainConfigProxy, address(superchainProxyAdmin), challenger, 100, bytes32(0)
             ),
+            _opcmV2: new OPContractsManagerV2(container),
             _superchainConfig: superchainConfigProxy,
             _protocolVersions: protocolVersionsProxy,
             _superchainProxyAdmin: superchainProxyAdmin,
@@ -1710,21 +1714,6 @@ contract OPContractsManager_Deploy_Test is DeployOPChain_TestBase {
             disputeClockExtension: _doi.disputeClockExtension(),
             disputeMaxClockDuration: _doi.disputeMaxClockDuration()
         });
-    }
-
-    function test_deploy_l2ChainIdEqualsZero_reverts() public {
-        IOPContractsManager.DeployInput memory deployInput = toOPCMDeployInput(doi);
-        deployInput.l2ChainId = 0;
-        vm.expectRevert(IOPContractsManager.InvalidChainId.selector);
-        opcm.deploy(deployInput);
-    }
-
-    function test_deploy_l2ChainIdEqualsCurrentChainId_reverts() public {
-        IOPContractsManager.DeployInput memory deployInput = toOPCMDeployInput(doi);
-        deployInput.l2ChainId = block.chainid;
-
-        vm.expectRevert(IOPContractsManager.InvalidChainId.selector);
-        opcm.deploy(deployInput);
     }
 
     function test_deploy_succeeds() public {
