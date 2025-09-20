@@ -35,6 +35,7 @@ import { IDisputeGameFactory } from "interfaces/dispute/IDisputeGameFactory.sol"
 import { ISystemConfig } from "interfaces/L1/ISystemConfig.sol";
 import {
     IOPContractsManager,
+    IOPContractsManagerV2,
     IOPContractsManagerGameTypeAdder,
     IOPContractsManagerInteropMigrator,
     IOPContractsManagerUpgrader
@@ -1074,15 +1075,16 @@ contract OPContractsManager_Upgrade_Test is OPContractsManager_Upgrade_Harness {
     }
 
     function test_upgrade_duplicateL2ChainId_succeeds() public {
-        // Deploy a new OPChain with the same L2 chain ID as the current OPChain
+        // Upgrade the current chain.
+        runCurrentUpgrade(upgrader);
+
+        // Deploy a new chain with the same chain ID as the current chain.
+        // Should work without any issues because the salt mixer creates different addresses.
         Deploy deploy = Deploy(address(uint160(uint256(keccak256(abi.encode("optimism.deploy"))))));
         IOPContractsManager.DeployInput memory deployInput = deploy.getDeployInput();
         deployInput.l2ChainId = l2ChainId;
         deployInput.saltMixer = "v2.0.0";
         opcm.deploy(deployInput);
-
-        // Try to upgrade the current OPChain
-        runCurrentUpgrade(upgrader);
     }
 
     /// @notice Tests that the absolute prestate can be overridden using the upgrade config.
@@ -1195,9 +1197,7 @@ contract OPContractsManager_Upgrade_Test is OPContractsManager_Upgrade_Harness {
         // nosemgrep: sol-style-use-abi-encodecall
         runCurrentUpgrade(
             upgrader,
-            abi.encodeWithSelector(
-                IOPContractsManagerUpgrader.OPContractsManagerUpgrader_SuperchainConfigNeedsUpgrade.selector, (0)
-            )
+            abi.encodeWithSelector(IOPContractsManagerV2.OPContractsManagerV2_SuperchainConfigNeedsUpgrade.selector)
         );
     }
 }

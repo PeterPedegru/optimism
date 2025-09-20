@@ -2011,6 +2011,12 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
         // Start building the full config.
         FullConfig memory cfg;
 
+        // Generate a salt mixer based on the SystemConfig address.
+        cfg.saltMixer = string(bytes.concat(bytes32(uint256(uint160(address(_cts.systemConfig))))));
+
+        // Set the SuperchainConfig address.
+        cfg.superchainConfig = _cts.systemConfig.superchainConfig();
+
         // Extract system roles.
         cfg.proxyAdminOwner = _cts.optimismPortal.proxyAdminOwner();
         cfg.systemConfigOwner = _cts.systemConfig.owner();
@@ -2029,14 +2035,18 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
         cfg.startingAnchorRoot = Proposal({ root: root, l2SequenceNumber: l2SequenceNumber });
         cfg.startingRespectedGameType = _cts.anchorStateRegistry.respectedGameType();
 
+        // Extract legacy game parameters.
+        // TODO(#?????): Remove this once we ship the V2 dispute games.
+        // NOTE: We make sure this stays true by enforcing PDG is enabled in _assertValidConfig.
+        IPermissionedDisputeGame pdg =
+            IPermissionedDisputeGame(address(_cts.disputeGameFactory.gameImpls(GameTypes.PERMISSIONED_CANNON)));
+        cfg.disputeMaxGameDepth = pdg.maxGameDepth();
+        cfg.disputeSplitDepth = pdg.splitDepth();
+        cfg.disputeClockExtension = pdg.clockExtension();
+        cfg.disputeMaxClockDuration = pdg.maxClockDuration();
+
         // Set dispute game configs.
         cfg.disputeGameConfigs = _inp.disputeGameConfigs;
-
-        // Generate a salt mixer based on the SystemConfig address.
-        cfg.saltMixer = string(bytes.concat(bytes32(uint256(uint160(address(_cts.systemConfig))))));
-
-        // Set the SuperchainConfig address.
-        cfg.superchainConfig = _cts.systemConfig.superchainConfig();
 
         // Return the full config.
         return cfg;
@@ -2060,6 +2070,15 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
         // but that's probably a good thing, keeps the config consistent.
         for (uint256 i = 0; i < _cfg.disputeGameConfigs.length; i++) {
             if (_cfg.disputeGameConfigs[i].gameType.raw() != validGameTypes[i].raw()) {
+                revert OPContractsManagerV2_InvalidGameConfigs();
+            }
+
+            // TODO(#?????): Legacy game deployment REQUIRES that the PermissionedDisputeGame
+            // exist. We can remove this check once we ship the V2 dispute games.
+            if (
+                _cfg.disputeGameConfigs[i].gameType.raw() == GameTypes.PERMISSIONED_CANNON.raw()
+                    && !_cfg.disputeGameConfigs[i].enabled
+            ) {
                 revert OPContractsManagerV2_InvalidGameConfigs();
             }
         }
@@ -2737,6 +2756,9 @@ contract OPContractsManager is ISemver {
     /// @notice Thrown when the prestate of a permissioned disputed game is 0.
     error PrestateRequired();
 
+    /// @notice Thrown when the PermissionedDisputeGame is not found.
+    error MissingPermissionedDisputeGame();
+
     // -------- Events --------
 
     /// @notice Legacy event, emitted when a new OP Stack chain is deployed.
@@ -2942,7 +2964,7 @@ contract OPContractsManager is ISemver {
 
         // Handle dispute game configs.
         cfg.disputeGameConfigs = new OPContractsManagerV2.DisputeGameConfig[](2);
-        cfg.disputeGameConfigs[1] = OPContractsManagerV2.DisputeGameConfig({
+        cfg.disputeGameConfigs[0] = OPContractsManagerV2.DisputeGameConfig({
             enabled: false, // NOTE: We currently disable FDG on first deploy.
             initBond: 0, // NOTE: We currently disable FDG on first deploy.
             gameType: GameTypes.CANNON,
@@ -2950,7 +2972,7 @@ contract OPContractsManager is ISemver {
                 OPContractsManagerV2.FaultDisputeGameConfig({ absolutePrestate: _input.disputeAbsolutePrestate })
             )
         });
-        cfg.disputeGameConfigs[0] = OPContractsManagerV2.DisputeGameConfig({
+        cfg.disputeGameConfigs[1] = OPContractsManagerV2.DisputeGameConfig({
             enabled: true,
             initBond: 0, // NOTE: PDG gets a zero init bond for legacy deployments.
             gameType: GameTypes.PERMISSIONED_CANNON,
@@ -3001,6 +3023,21 @@ contract OPContractsManager is ISemver {
         uint256 fdgBond = dgf.initBonds(GameTypes.CANNON);
         uint256 pdgBond = dgf.initBonds(GameTypes.PERMISSIONED_CANNON);
 
+        // We can't support this case for legacy upgrades.
+        if (pdg == address(0)) {
+            revert MissingPermissionedDisputeGame();
+        }
+
+        // Maintaining legacy behavior for now, take the existing prestate but override if the user
+        // provides their own. Revert if prestate is still zero after both rules are applied.
+        Claim prestate = IPermissionedDisputeGame(pdg).absolutePrestate();
+        if (_opChainConfig.absolutePrestate.raw() != bytes32(0)) {
+            prestate = _opChainConfig.absolutePrestate;
+        }
+        if (prestate.raw() == bytes32(0)) {
+            revert PrestateNotSet();
+        }
+
         // Build the dispute game configs. OPCMv2 requires that we account for all available game
         // types so that we're being explicit about what we want and what we don't want. Game types
         // that aren't enabled technically don't need valid game args but it's easier to just
@@ -3011,20 +3048,18 @@ contract OPContractsManager is ISemver {
             enabled: fdg != address(0),
             initBond: fdgBond,
             gameType: GameTypes.CANNON,
-            gameArgs: abi.encode(
-                OPContractsManagerV2.FaultDisputeGameConfig({ absolutePrestate: _opChainConfig.absolutePrestate })
-            )
+            gameArgs: abi.encode(OPContractsManagerV2.FaultDisputeGameConfig({ absolutePrestate: prestate }))
         });
         disputeGameConfigs[1] = OPContractsManagerV2.DisputeGameConfig({
-            enabled: pdg != address(0),
+            enabled: true, // Guaranteed by the check above.
             initBond: pdgBond,
             gameType: GameTypes.PERMISSIONED_CANNON,
             gameArgs: abi.encode(
                 OPContractsManagerV2.PermissionedDisputeGameConfig({
-                    absolutePrestate: _opChainConfig.absolutePrestate,
-                    proposer: address(0), // USE_EXISTING_PROPOSER
-                    challenger: address(0) // USE_EXISTING_CHALLENGER
-                 })
+                    absolutePrestate: prestate,
+                    proposer: IPermissionedDisputeGame(pdg).proposer(),
+                    challenger: IPermissionedDisputeGame(pdg).challenger()
+                })
             )
         });
 
