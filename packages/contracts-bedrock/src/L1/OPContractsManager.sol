@@ -1771,41 +1771,8 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
     /// @notice Address that represents that the existing challenger should be used.
     address internal constant USE_EXISTING_CHALLENGER = address(0);
 
-    /// @notice Legacy event, emitted when a new OP Stack chain is deployed.
-    /// @param l2ChainId    Chain ID of the new chain.
-    /// @param deployer     Address that deployed the chain.
-    /// @param deployOutput ABI-encoded output of the deployment.
-    event Deployed(uint256 indexed l2ChainId, address indexed deployer, bytes deployOutput);
-
     /// @param _container The OPContractsManagerContractsContainer contract.
     constructor(OPContractsManagerContractsContainer _container) OPContractsManagerBase(_container) {}
-
-    /// @notice Deploy function that supports the legacy OPCM interface.
-    /// @param _input The deploy input.
-    /// @param _superchainConfig The superchain config.
-    /// @param _deployer The deployer.
-    /// @return The deploy output.
-    function deploy(
-        OPContractsManager.DeployInput calldata _input,
-        ISuperchainConfig _superchainConfig,
-        address _deployer
-    )
-        external
-        returns (OPContractsManager.DeployOutput memory)
-    {
-        OPContractsManager.DeployOutput memory output =
-            _toDeployOutput(deploy(_toFullConfig(_input, _superchainConfig)));
-        emit Deployed(_input.l2ChainId, _deployer, abi.encode(output));
-        return output;
-    }
-
-    /// @notice Upgrade function that supports the legacy OPCM interface.
-    /// @param _opChainConfigs The op chain configs.
-    function upgrade(OPContractsManager.OpChainConfig[] memory _opChainConfigs) external {
-        for (uint256 i = 0; i < _opChainConfigs.length; i++) {
-            upgrade(_toUpgradeInput(_opChainConfigs[i]));
-        }
-    }
 
     /// @notice Deploys a new chain from full config.
     /// @param _cfg The full config.
@@ -1838,125 +1805,6 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
         // TODO: Implement.
     }
 
-    /// @notice Helper that converts the legacy DeployInput into the new FullConfig.
-    /// @param _input The legacy DeployInput.
-    /// @param _superchainConfig The SuperchainConfig contract.
-    /// @return The new FullConfig.
-    function _toFullConfig(
-        OPContractsManager.DeployInput memory _input,
-        ISuperchainConfig _superchainConfig
-    )
-        internal
-        pure
-        returns (FullConfig memory)
-    {
-        // Start building the full config.
-        FullConfig memory cfg;
-
-        // Handle salt mixer.
-        cfg.saltMixer = _input.saltMixer;
-
-        // Handle system roles.
-        cfg.roles.proxyAdminOwner = _input.roles.opChainProxyAdminOwner;
-        cfg.roles.systemConfigOwner = _input.roles.systemConfigOwner;
-        cfg.roles.unsafeBlockSigner = _input.roles.unsafeBlockSigner;
-        cfg.roles.batcher = _input.roles.batcher;
-
-        // Handle L2 system configuration.
-        cfg.l2SystemConfig.basefeeScalar = _input.basefeeScalar;
-        cfg.l2SystemConfig.blobBasefeeScalar = _input.blobBasefeeScalar;
-        cfg.l2SystemConfig.gasLimit = _input.gasLimit;
-        cfg.l2SystemConfig.l2ChainId = _input.l2ChainId;
-        cfg.l2SystemConfig.resourceConfig = Constants.DEFAULT_RESOURCE_CONFIG();
-
-        // Handle dispute game configs.
-        cfg.disputeGameConfigs = new DisputeGameConfig[](1);
-        cfg.disputeGameConfigs[0] = DisputeGameConfig({
-            gameType: GameTypes.PERMISSIONED_CANNON,
-            gameArgs: abi.encode(
-                PermissionedDisputeGameConfig({
-                    absolutePrestate: _input.disputeAbsolutePrestate,
-                    proposer: _input.roles.proposer,
-                    challenger: _input.roles.challenger
-                })
-            )
-        });
-
-        // Handle anchor state configuration.
-        cfg.anchorStateConfig.startingAnchorRoot = abi.decode(_input.startingAnchorRoot, (Proposal));
-        cfg.anchorStateConfig.startingRespectedGameType = GameTypes.PERMISSIONED_CANNON;
-
-        // Handle SuperchainConfig.
-        cfg.superchainConfig = _superchainConfig;
-
-        // Handle legacy game configuration.
-        cfg.legacyGameConfig.disputeMaxGameDepth = _input.disputeMaxGameDepth;
-        cfg.legacyGameConfig.disputeSplitDepth = _input.disputeSplitDepth;
-        cfg.legacyGameConfig.disputeClockExtension = _input.disputeClockExtension;
-        cfg.legacyGameConfig.disputeMaxClockDuration = _input.disputeMaxClockDuration;
-
-        // Return the full config.
-        return cfg;
-    }
-
-    /// @notice Helper that converts the legacy OpChainConfig into the new UpgradeInput.
-    /// @param _opChainConfig The legacy OpChainConfig.
-    /// @return The new UpgradeInput.
-    function _toUpgradeInput(OPContractsManager.OpChainConfig memory _opChainConfig)
-        internal
-        pure
-        returns (UpgradeInput memory)
-    {
-        // Build the dispute game configs first. Since we're supporting the legacy system here
-        // we're only going to inject configs for FDG and PDG.
-        DisputeGameConfig[] memory disputeGameConfigs = new DisputeGameConfig[](2);
-        disputeGameConfigs[0] = DisputeGameConfig({
-            gameType: GameTypes.CANNON,
-            gameArgs: abi.encode(FaultDisputeGameConfig({ absolutePrestate: _opChainConfig.absolutePrestate }))
-        });
-        disputeGameConfigs[1] = DisputeGameConfig({
-            gameType: GameTypes.PERMISSIONED_CANNON,
-            gameArgs: abi.encode(
-                PermissionedDisputeGameConfig({
-                    absolutePrestate: _opChainConfig.absolutePrestate,
-                    proposer: USE_EXISTING_PROPOSER,
-                    challenger: USE_EXISTING_CHALLENGER
-                })
-            )
-        });
-
-        // Return the upgrade input.
-        return UpgradeInput({ systemConfig: _opChainConfig.systemConfigProxy, disputeGameConfigs: disputeGameConfigs });
-    }
-
-    /// @notice Helper that converts the new ChainContracts struct into the old DeployOutput.
-    /// @param _cts The new ChainContracts struct.
-    /// @return The old DeployOutput.
-    function _toDeployOutput(ChainContracts memory _cts)
-        internal
-        view
-        returns (OPContractsManager.DeployOutput memory)
-    {
-        return OPContractsManager.DeployOutput({
-            opChainProxyAdmin: _cts.proxyAdmin,
-            addressManager: _cts.addressManager,
-            l1ERC721BridgeProxy: _cts.l1ERC721Bridge,
-            systemConfigProxy: _cts.systemConfig,
-            optimismMintableERC20FactoryProxy: _cts.optimismMintableERC20Factory,
-            l1StandardBridgeProxy: _cts.l1StandardBridge,
-            l1CrossDomainMessengerProxy: _cts.l1CrossDomainMessenger,
-            ethLockboxProxy: _cts.ethLockbox,
-            optimismPortalProxy: _cts.optimismPortal,
-            disputeGameFactoryProxy: _cts.disputeGameFactory,
-            anchorStateRegistryProxy: _cts.anchorStateRegistry,
-            faultDisputeGame: IFaultDisputeGame(address(_cts.disputeGameFactory.gameImpls(GameTypes.CANNON))),
-            permissionedDisputeGame: IPermissionedDisputeGame(
-                address(_cts.disputeGameFactory.gameImpls(GameTypes.PERMISSIONED_CANNON))
-            ),
-            delayedWETHPermissionedGameProxy: _cts.delayedWETH,
-            delayedWETHPermissionlessGameProxy: _cts.delayedWETH
-        });
-    }
 
     /// @notice Builds or loads the chain contracts from whatever exists.
     /// @param _systemConfig The SystemConfig contract.
@@ -2837,6 +2685,14 @@ contract OPContractsManager is ISemver {
     /// @notice Thrown when the prestate of a permissioned disputed game is 0.
     error PrestateRequired();
 
+    // -------- Events --------
+
+    /// @notice Legacy event, emitted when a new OP Stack chain is deployed.
+    /// @param l2ChainId    Chain ID of the new chain.
+    /// @param deployer     Address that deployed the chain.
+    /// @param deployOutput ABI-encoded output of the deployment.
+    event Deployed(uint256 indexed l2ChainId, address indexed deployer, bytes deployOutput);
+
     // -------- Methods --------
 
     constructor(
@@ -2902,7 +2758,11 @@ contract OPContractsManager is ISemver {
     /// @param _input The deploy input parameters for the deployment.
     /// @return The deploy output values of the deployment.
     function deploy(DeployInput calldata _input) external virtual returns (DeployOutput memory) {
-        return opcmV2.deploy(_input, superchainConfig, msg.sender);
+        OPContractsManagerV2.FullConfig memory cfg = _toFullConfig(_input, superchainConfig);
+        OPContractsManagerV2.ChainContracts memory cts = opcmV2.deploy(cfg);
+        DeployOutput memory output = _toDeployOutput(cts);
+        emit Deployed(_input.l2ChainId, msg.sender, abi.encode(output));
+        return output;
     }
 
     /// @notice Upgrades a set of chains to the latest implementation contracts
@@ -2912,8 +2772,11 @@ contract OPContractsManager is ISemver {
     function upgrade(OpChainConfig[] memory _opChainConfigs) external virtual {
         if (address(this) == address(thisOPCM)) revert OnlyDelegatecall();
 
-        bytes memory data = abi.encodeCall(OPContractsManagerUpgrader.upgrade, (_opChainConfigs));
-        _performDelegateCall(address(opcmV2), data);
+        for (uint256 i = 0; i < _opChainConfigs.length; i++) {
+            OPContractsManagerV2.UpgradeInput memory upgradeInput = _toUpgradeInput(_opChainConfigs[i]);
+            bytes memory data = abi.encodeCall(OPContractsManagerV2.upgrade, (upgradeInput));
+            _performDelegateCall(address(opcmV2), data);
+        }
     }
 
     /// @notice Upgrades the SuperchainConfig contract.
@@ -2992,6 +2855,126 @@ contract OPContractsManager is ISemver {
     /// @return True if the feature is enabled, false otherwise.
     function isDevFeatureEnabled(bytes32 _feature) public view returns (bool) {
         return opcmDeployer.isDevFeatureEnabled(_feature);
+    }
+
+    /// @notice Helper that converts the legacy DeployInput into the new FullConfig.
+    /// @param _input The legacy DeployInput.
+    /// @param _superchainConfig The SuperchainConfig contract.
+    /// @return The new FullConfig.
+    function _toFullConfig(
+        DeployInput memory _input,
+        ISuperchainConfig _superchainConfig
+    )
+        internal
+        pure
+        returns (OPContractsManagerV2.FullConfig memory)
+    {
+        // Start building the full config.
+        OPContractsManagerV2.FullConfig memory cfg;
+
+        // Handle salt mixer.
+        cfg.saltMixer = _input.saltMixer;
+
+        // Handle system roles.
+        cfg.roles.proxyAdminOwner = _input.roles.opChainProxyAdminOwner;
+        cfg.roles.systemConfigOwner = _input.roles.systemConfigOwner;
+        cfg.roles.unsafeBlockSigner = _input.roles.unsafeBlockSigner;
+        cfg.roles.batcher = _input.roles.batcher;
+
+        // Handle L2 system configuration.
+        cfg.l2SystemConfig.basefeeScalar = _input.basefeeScalar;
+        cfg.l2SystemConfig.blobBasefeeScalar = _input.blobBasefeeScalar;
+        cfg.l2SystemConfig.gasLimit = _input.gasLimit;
+        cfg.l2SystemConfig.l2ChainId = _input.l2ChainId;
+        cfg.l2SystemConfig.resourceConfig = Constants.DEFAULT_RESOURCE_CONFIG();
+
+        // Handle dispute game configs.
+        cfg.disputeGameConfigs = new OPContractsManagerV2.DisputeGameConfig[](1);
+        cfg.disputeGameConfigs[0] = OPContractsManagerV2.DisputeGameConfig({
+            gameType: GameTypes.PERMISSIONED_CANNON,
+            gameArgs: abi.encode(
+                OPContractsManagerV2.PermissionedDisputeGameConfig({
+                    absolutePrestate: _input.disputeAbsolutePrestate,
+                    proposer: _input.roles.proposer,
+                    challenger: _input.roles.challenger
+                })
+            )
+        });
+
+        // Handle anchor state configuration.
+        cfg.anchorStateConfig.startingAnchorRoot = abi.decode(_input.startingAnchorRoot, (Proposal));
+        cfg.anchorStateConfig.startingRespectedGameType = GameTypes.PERMISSIONED_CANNON;
+
+        // Handle SuperchainConfig.
+        cfg.superchainConfig = _superchainConfig;
+
+        // Handle legacy game configuration.
+        cfg.legacyGameConfig.disputeMaxGameDepth = _input.disputeMaxGameDepth;
+        cfg.legacyGameConfig.disputeSplitDepth = _input.disputeSplitDepth;
+        cfg.legacyGameConfig.disputeClockExtension = _input.disputeClockExtension;
+        cfg.legacyGameConfig.disputeMaxClockDuration = _input.disputeMaxClockDuration;
+
+        // Return the full config.
+        return cfg;
+    }
+
+    /// @notice Helper that converts the legacy OpChainConfig into the new UpgradeInput.
+    /// @param _opChainConfig The legacy OpChainConfig.
+    /// @return The new UpgradeInput.
+    function _toUpgradeInput(OpChainConfig memory _opChainConfig)
+        internal
+        pure
+        returns (OPContractsManagerV2.UpgradeInput memory)
+    {
+        // Build the dispute game configs first. Since we're supporting the legacy system here
+        // we're only going to inject configs for FDG and PDG.
+        OPContractsManagerV2.DisputeGameConfig[] memory disputeGameConfigs = new OPContractsManagerV2.DisputeGameConfig[](2);
+        disputeGameConfigs[0] = OPContractsManagerV2.DisputeGameConfig({
+            gameType: GameTypes.CANNON,
+            gameArgs: abi.encode(OPContractsManagerV2.FaultDisputeGameConfig({ absolutePrestate: _opChainConfig.absolutePrestate }))
+        });
+        disputeGameConfigs[1] = OPContractsManagerV2.DisputeGameConfig({
+            gameType: GameTypes.PERMISSIONED_CANNON,
+            gameArgs: abi.encode(
+                OPContractsManagerV2.PermissionedDisputeGameConfig({
+                    absolutePrestate: _opChainConfig.absolutePrestate,
+                    proposer: address(0), // USE_EXISTING_PROPOSER
+                    challenger: address(0) // USE_EXISTING_CHALLENGER
+                })
+            )
+        });
+
+        // Return the upgrade input.
+        return OPContractsManagerV2.UpgradeInput({ systemConfig: _opChainConfig.systemConfigProxy, disputeGameConfigs: disputeGameConfigs });
+    }
+
+    /// @notice Helper that converts the new ChainContracts struct into the old DeployOutput.
+    /// @param _cts The new ChainContracts struct.
+    /// @return The old DeployOutput.
+    function _toDeployOutput(OPContractsManagerV2.ChainContracts memory _cts)
+        internal
+        view
+        returns (DeployOutput memory)
+    {
+        return DeployOutput({
+            opChainProxyAdmin: _cts.proxyAdmin,
+            addressManager: _cts.addressManager,
+            l1ERC721BridgeProxy: _cts.l1ERC721Bridge,
+            systemConfigProxy: _cts.systemConfig,
+            optimismMintableERC20FactoryProxy: _cts.optimismMintableERC20Factory,
+            l1StandardBridgeProxy: _cts.l1StandardBridge,
+            l1CrossDomainMessengerProxy: _cts.l1CrossDomainMessenger,
+            ethLockboxProxy: _cts.ethLockbox,
+            optimismPortalProxy: _cts.optimismPortal,
+            disputeGameFactoryProxy: _cts.disputeGameFactory,
+            anchorStateRegistryProxy: _cts.anchorStateRegistry,
+            faultDisputeGame: IFaultDisputeGame(address(_cts.disputeGameFactory.gameImpls(GameTypes.CANNON))),
+            permissionedDisputeGame: IPermissionedDisputeGame(
+                address(_cts.disputeGameFactory.gameImpls(GameTypes.PERMISSIONED_CANNON))
+            ),
+            delayedWETHPermissionedGameProxy: _cts.delayedWETH,
+            delayedWETHPermissionlessGameProxy: _cts.delayedWETH
+        });
     }
 
     /// @notice Helper function to perform a delegatecall to a target contract
