@@ -14,7 +14,11 @@ library DevFeatures {
     bytes32 public constant OPTIMISM_PORTAL_INTEROP =
         bytes32(0x0000000000000000000000000000000000000000000000000000000000000001);
 
+    /// @notice The feature that enables the Cannon Kona version of the FaultDisputeGame.
     bytes32 public constant CANNON_KONA = bytes32(0x0000000000000000000000000000000000000000000000000000000000000010);
+
+    /// @notice The feature that enables the OPContractsManagerV2 contract.
+    bytes32 public constant OPCM_V2 = bytes32(0x0000000000000000000000000000000000000000000000000000000000000100);
 
     /// @notice Checks if a feature is enabled in a bitmap. Note that this function does not check
     ///         that the input feature represents a single feature and the bitwise AND operation

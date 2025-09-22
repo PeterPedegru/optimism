@@ -1758,6 +1758,14 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
         string saltMixer;
     }
 
+    /// @notice Emitted when a proxy is created by this contract.
+    /// @param name  The name of the proxy.
+    /// @param proxy The address of the proxy.
+    event ProxyCreation(string name, address proxy);
+
+    /// @notice Thrown when an account other than this contract attempts to log a proxy creation.
+    error OPContractsManagerV2_ProxyLogOnlySelf();
+
     /// @notice Thrown when the SuperchainConfig needs to be upgraded.
     error OPContractsManagerV2_SuperchainConfigNeedsUpgrade();
 
@@ -1781,6 +1789,17 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
 
     /// @param _container The OPContractsManagerContractsContainer contract.
     constructor(OPContractsManagerContractsContainer _container) OPContractsManagerBase(_container) { }
+
+    /// @notice Helper, logs when this contract creates proxies, makes fuzz testing for accidental
+    ///         proxy creation easier.
+    /// @param _name The name of the proxy.
+    /// @param _proxy The address of the proxy.
+    function logProxyCreation(string memory _name, address _proxy) public {
+        if (msg.sender != address(this)) {
+            revert OPContractsManagerV2_ProxyLogOnlySelf();
+        }
+        emit ProxyCreation(_name, _proxy);
+    }
 
     /// @notice Deploys a new chain from full config.
     /// @param _cfg The full config.
@@ -2279,8 +2298,16 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
                 revert OPContractsManagerV2_ProxyLoadBadReturn();
             }
 
-            // Success case is easy, this should decode properly.
-            return abi.decode(res, (address));
+            // Will catch if the data is not an abi-encoded address.
+            address result = abi.decode(res, (address));
+
+            // If the address is zero and we must load, revert.
+            if (result == address(0) && _mustLoad) {
+                revert OPContractsManagerV2_ProxyMustLoad();
+            }
+
+            // Return the result.
+            return result;
         } else {
             // Handling the failure case well is important to making sure that this function is
             // safe. This function is great because it cuts down on a large amount of duplicated
@@ -2351,6 +2378,10 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
                 // Otherwise this is a normal proxy.
                 result = deployProxy(_args.l2ChainId, _args.proxyAdmin, _args.saltMixer, _contractName);
             }
+
+            // Log proxy creation via external call. We can easily test for this external call to
+            // do better assertions in our fuzz testing.
+            this.logProxyCreation(_contractName, result);
 
             // Return the final deployment result.
             return result;
@@ -2471,6 +2502,8 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
             blueprint1 = bps.permissionedDisputeGame1;
             blueprint2 = bps.permissionedDisputeGame2;
         } else {
+            // Since we assert in _assertValidConfig that we only have valid configs, this should
+            // never happen, but we'll be defensive and revert if it does.
             revert OPContractsManagerV2_UnsupportedGameType();
         }
 
@@ -2548,6 +2581,8 @@ contract OPContractsManagerV2 is OPContractsManagerBase {
                 4
             );
         } else {
+            // Since we assert in _assertValidConfig that we only have valid configs, this should
+            // never happen, but we'll be defensive and revert if it does.
             revert OPContractsManagerV2_UnsupportedGameType();
         }
     }
@@ -2826,11 +2861,16 @@ contract OPContractsManager is ISemver {
     /// @param _input The deploy input parameters for the deployment.
     /// @return The deploy output values of the deployment.
     function deploy(DeployInput calldata _input) external virtual returns (DeployOutput memory) {
-        OPContractsManagerV2.FullConfig memory cfg = _toFullConfig(_input, superchainConfig);
-        OPContractsManagerV2.ChainContracts memory cts = opcmV2.deploy(cfg);
-        DeployOutput memory output = _toDeployOutput(cts);
-        emit Deployed(_input.l2ChainId, msg.sender, abi.encode(output));
-        return output;
+        // If OPCM_V2 is enabled, use the new deploy function.
+        if (isDevFeatureEnabled(DevFeatures.OPCM_V2)) {
+            OPContractsManagerV2.FullConfig memory cfg = _toFullConfig(_input, superchainConfig);
+            OPContractsManagerV2.ChainContracts memory cts = opcmV2.deploy(cfg);
+            DeployOutput memory output = _toDeployOutput(cts);
+            emit Deployed(_input.l2ChainId, msg.sender, abi.encode(output));
+            return output;
+        } else {
+            return opcmDeployer.deploy(_input, superchainConfig, msg.sender);
+        }
     }
 
     /// @notice Upgrades a set of chains to the latest implementation contracts
@@ -2840,10 +2880,16 @@ contract OPContractsManager is ISemver {
     function upgrade(OpChainConfig[] memory _opChainConfigs) external virtual {
         if (address(this) == address(thisOPCM)) revert OnlyDelegatecall();
 
-        for (uint256 i = 0; i < _opChainConfigs.length; i++) {
-            OPContractsManagerV2.UpgradeInput memory upgradeInput = _toUpgradeInput(_opChainConfigs[i]);
-            bytes memory data = abi.encodeCall(OPContractsManagerV2.upgrade, (upgradeInput));
-            _performDelegateCall(address(opcmV2), data);
+        // If OPCM_V2 is enabled, use the new upgrade function.
+        if (isDevFeatureEnabled(DevFeatures.OPCM_V2)) {
+            for (uint256 i = 0; i < _opChainConfigs.length; i++) {
+                OPContractsManagerV2.UpgradeInput memory upgradeInput = _toUpgradeInput(_opChainConfigs[i]);
+                bytes memory data = abi.encodeCall(OPContractsManagerV2.upgrade, (upgradeInput));
+                _performDelegateCall(address(opcmV2), data);
+            }
+        } else {
+            bytes memory data = abi.encodeCall(OPContractsManagerUpgrader.upgrade, (_opChainConfigs));
+            _performDelegateCall(address(opcmUpgrader), data);
         }
     }
 

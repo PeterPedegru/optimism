@@ -245,4 +245,9 @@ library Config {
     function devFeatureCannonKona() internal view returns (bool) {
         return vm.envOr("DEV_FEATURE__CANNON_KONA", false);
     }
+
+    /// @notice Returns true if the development feature opcm_v2 is enabled.
+    function devFeatureOpcmV2() internal view returns (bool) {
+        return vm.envOr("DEV_FEATURE__OPCM_V2", false);
+    }
 }

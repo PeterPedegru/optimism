@@ -40,6 +40,10 @@ contract FeatureFlags {
             console.log("Setup: DEV_FEATURE__CANNON_KONA is enabled");
             devFeatureBitmap |= DevFeatures.CANNON_KONA;
         }
+        if (Config.devFeatureOpcmV2()) {
+            console.log("Setup: DEV_FEATURE__OPCM_V2 is enabled");
+            devFeatureBitmap |= DevFeatures.OPCM_V2;
+        }
     }
 
     /// @notice Enables a feature.

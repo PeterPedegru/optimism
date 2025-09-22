@@ -1193,12 +1193,68 @@ contract OPContractsManager_Upgrade_Test is OPContractsManager_Upgrade_Harness {
         // Force the SuperchainConfig to return an obviously outdated version.
         vm.mockCall(address(superchainConfig), abi.encodeCall(ISuperchainConfig.version, ()), abi.encode("0.0.0"));
 
+        // Error depends on if V1 or V2 is being used.
+        bytes memory err = isDevFeatureEnabled(DevFeatures.OPCM_V2)
+            ? abi.encodeWithSelector(IOPContractsManagerV2.OPContractsManagerV2_SuperchainConfigNeedsUpgrade.selector)
+            : abi.encodeWithSelector(
+                IOPContractsManagerUpgrader.OPContractsManagerUpgrader_SuperchainConfigNeedsUpgrade.selector
+            );
+
         // Try upgrading an OPChain without upgrading its superchainConfig.
         // nosemgrep: sol-style-use-abi-encodecall
-        runCurrentUpgrade(
-            upgrader,
-            abi.encodeWithSelector(IOPContractsManagerV2.OPContractsManagerV2_SuperchainConfigNeedsUpgrade.selector)
-        );
+        runCurrentUpgrade(upgrader, err);
+    }
+
+    /// @notice Tests that the V2 upgrade function reverts when the user does not provide a game
+    ///         config for each valid game type.
+    function test_upgrade_missingGameConfigs_reverts() public {
+        skipIfDevFeatureDisabled(DevFeatures.OPCM_V2);
+    }
+
+    /// @notice Tests that the V2 upgrade function reverts when the user provides the game configs
+    ///         in the wrong order.
+    function test_upgrade_wrongGameConfigOrder_reverts() public {
+        skipIfDevFeatureDisabled(DevFeatures.OPCM_V2);
+    }
+
+    /// @notice Tests that the V2 upgrade function reverts when the user wants to disable the
+    ///         PermissionedDisputeGame.
+    function test_upgrade_disabledPermissionedGame_reverts() public {
+        skipIfDevFeatureDisabled(DevFeatures.OPCM_V2);
+    }
+
+    /// @notice Tests that the V2 upgrade function reverts when the function that attempts to load
+    ///         an existing proxy returns data that isn't an abi-encoded address.
+    /// @param _len Length of the data to generate.
+    function testFuzz_upgrade_proxyLoadBadReturn_reverts(uint8 _len) public {
+        skipIfDevFeatureDisabled(DevFeatures.OPCM_V2);
+    }
+
+    /// @notice Tests that the V2 upgrade function reverts when the function that attempts to load
+    ///         an existing proxy returns the zero address but we asked it to load.
+    function test_upgrade_proxyMustLoadButZeroAddress_reverts() public {
+        skipIfDevFeatureDisabled(DevFeatures.OPCM_V2);
+    }
+
+    /// @notice Tests that the V2 upgrade function reverts when the function that attempts to load
+    ///         an existing proxy returns an error but we asked it to load.
+    function test_upgrade_proxyMustLoadButReverts_reverts() public {
+        skipIfDevFeatureDisabled(DevFeatures.OPCM_V2);
+    }
+
+    /// @notice Tests that the V2 upgrade function reverts when the function that attempts to load
+    ///         an existing proxy returns any error with data other than the
+    ///         "Proxy: implementation not initialized" error.
+    /// @param _len Length of the data to generate.
+    function testFuzz_upgrade_proxyLoadBadError_reverts(uint8 _len) public {
+        skipIfDevFeatureDisabled(DevFeatures.OPCM_V2);
+    }
+
+    /// @notice Tests that the V2 upgrade function doesn't have any potential gas value that would
+    ///         cause the function to create a proxy that wasn't expected to be created.
+    /// @param _gas Amount of gas to use in the upgrade function.
+    function testFuzz_upgrade_proxyLoadNeedsGas_reverts(uint256 _gas) public {
+        skipIfDevFeatureDisabled(DevFeatures.OPCM_V2);
     }
 }
 
