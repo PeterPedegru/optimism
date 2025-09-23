@@ -69,6 +69,8 @@ func (o *OutputAgreementEnricher) Enrich(ctx context.Context, block rpcblock.Blo
 		return nil
 	}
 
+	game.RollupEndpointTotalCount = len(o.clients)
+
 	results := make([]outputResult, len(o.clients))
 	var wg sync.WaitGroup
 	for i, client := range o.clients {
@@ -118,7 +120,9 @@ func (o *OutputAgreementEnricher) Enrich(ctx context.Context, block rpcblock.Blo
 
 		validResults = append(validResults, result)
 
-		if !result.notFound {
+		if result.notFound {
+			game.RollupEndpointNotFoundCount++
+		} else {
 			foundResults = append(foundResults, result)
 		}
 	}
