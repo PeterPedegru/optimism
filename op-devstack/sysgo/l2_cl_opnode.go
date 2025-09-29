@@ -173,10 +173,6 @@ func WithOpNode(l2CLID stack.L2CLNodeID, l1CLID stack.L1CLNodeID, l1ELID stack.L
 		syncMode := cfg.VerifierSyncMode
 		if cfg.IsSequencer {
 			syncMode = cfg.SequencerSyncMode
-			// Sanity check, to navigate legacy sync-mode test assumptions.
-			// Can't enable ELSync on the sequencer or it will never start sequencing because
-			// ELSync needs to receive gossip from the sequencer to drive the sync
-			p.Require().NotEqual(nodeSync.ELSync, syncMode, "sequencer cannot use EL sync")
 		}
 
 		jwtPath, jwtSecret := orch.writeDefaultJWT()
@@ -237,6 +233,9 @@ func WithOpNode(l2CLID stack.L2CLNodeID, l1CLID stack.L1CLNodeID, l1ELID stack.L
 				RPCJwtSecretPath: jwtPath,
 			}
 		}
+
+		// set the req-resp sync flag as per config
+		p2pConfig.EnableReqRespSync = cfg.EnableReqRespSync
 
 		// Get the L2 engine address from the EL node (which can be a regular EL node or a SyncTesterEL)
 		l2EngineAddr := l2EL.EngineRPC()
