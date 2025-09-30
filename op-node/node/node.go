@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	gosync "sync"
 	"sync/atomic"
 	"time"
@@ -12,6 +13,8 @@ import (
 	"github.com/hashicorp/go-multierror"
 
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	gethevent "github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -43,6 +46,34 @@ import (
 
 var ErrAlreadyClosed = errors.New("node is already closed")
 
+// L1Client is the interface that op-node uses to interact with L1.
+// This allows wrapped or mocked clients to be used
+type L1Client interface {
+	L1BlockRefByLabel(ctx context.Context, label eth.BlockLabel) (eth.L1BlockRef, error)
+	L1BlockRefByNumber(ctx context.Context, num uint64) (eth.L1BlockRef, error)
+	L1BlockRefByHash(ctx context.Context, hash common.Hash) (eth.L1BlockRef, error)
+	InfoByHash(ctx context.Context, hash common.Hash) (eth.BlockInfo, error)
+	InfoByNumber(ctx context.Context, number uint64) (eth.BlockInfo, error)
+	InfoByLabel(ctx context.Context, label eth.BlockLabel) (eth.BlockInfo, error)
+	InfoAndTxsByHash(ctx context.Context, hash common.Hash) (eth.BlockInfo, types.Transactions, error)
+	InfoAndTxsByNumber(ctx context.Context, number uint64) (eth.BlockInfo, types.Transactions, error)
+	InfoAndTxsByLabel(ctx context.Context, label eth.BlockLabel) (eth.BlockInfo, types.Transactions, error)
+	FetchReceipts(ctx context.Context, blockHash common.Hash) (eth.BlockInfo, types.Receipts, error)
+	GetProof(ctx context.Context, address common.Address, storage []common.Hash, blockTag string) (*eth.AccountResult, error)
+	GetStorageAt(ctx context.Context, address common.Address, storageSlot common.Hash, blockTag string) (common.Hash, error)
+	ReadStorageAt(ctx context.Context, address common.Address, storageSlot common.Hash, blockHash common.Hash) (common.Hash, error)
+	SubscribeNewHead(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error)
+	ChainID(ctx context.Context) (*big.Int, error)
+	Close()
+}
+
+// BeaconClient is the interface that op-node uses to interact with L1 Beacon.
+// This allows wrapped or mocked clients to be used
+type BeaconClient interface {
+	GetVersion(ctx context.Context) (string, error)
+	GetBlobs(ctx context.Context, ref eth.L1BlockRef, hashes []eth.IndexedBlobHash) ([]*eth.Blob, error)
+}
+
 type closableSafeDB interface {
 	rollup.SafeHeadListener
 	SafeDBReader
@@ -63,7 +94,7 @@ type OpNode struct {
 	eventSys   event.System
 	eventDrain driver.Drain
 
-	l1Source  *sources.L1Client     // L1 Client to fetch data from
+	l1Source  L1Client              // L1 Client to fetch data from
 	l2Driver  *driver.Driver        // L2 Engine to Sync
 	l2Source  *sources.EngineClient // L2 Execution Engine RPC bindings
 	server    *oprpc.Server         // RPC server hosting the rollup-node API
@@ -79,7 +110,7 @@ type OpNode struct {
 	pprofService *oppprof.Service
 	metricsSrv   *httputil.HTTPServer
 
-	beacon *sources.L1BeaconClient
+	beacon BeaconClient
 
 	interopSys interop.SubSystem
 
@@ -104,6 +135,14 @@ type OpNode struct {
 // The provided ctx argument is for the span of initialization only;
 // the node will immediately Stop(ctx) before finishing initialization if the context is canceled during initialization.
 func New(ctx context.Context, cfg *config.Config, log log.Logger, appVersion string, m *metrics.Metrics) (*OpNode, error) {
+	return NewWithOverload(ctx, cfg, log, appVersion, m, nil)
+}
+
+// NewWithOverload creates a new OpNode instance with optional initialization overloads.
+// This allows callers to override specific initialization steps, enabling resource sharing
+// (e.g., shared L1Client across multiple nodes) without duplicating connections or caches.
+// If overload is nil or any of its fields are nil, the default initialization is used for those steps.
+func NewWithOverload(ctx context.Context, cfg *config.Config, log log.Logger, appVersion string, m *metrics.Metrics, overload *InitOverload) (*OpNode, error) {
 	if err := cfg.Check(); err != nil {
 		return nil, err
 	}
@@ -120,7 +159,7 @@ func New(ctx context.Context, cfg *config.Config, log log.Logger, appVersion str
 	// not a context leak, gossipsub is closed with a context.
 	n.resourcesCtx, n.resourcesClose = context.WithCancel(context.Background())
 
-	err := n.init(ctx, cfg)
+	err := n.initOverload(ctx, cfg, overload)
 	if err != nil {
 		log.Error("Error initializing the rollup node", "err", err)
 		// ensure we always close the node resources if we fail to initialize the node.
@@ -132,15 +171,48 @@ func New(ctx context.Context, cfg *config.Config, log log.Logger, appVersion str
 	return n, nil
 }
 
+// InitOverload allows callers to provide pre-made resources for initialization.
+// This enables resource sharing (e.g., shared L1Client across multiple nodes)
+// without duplicating connections or caches. If a field is nil, the default
+// initialization is used to create that resource.
+type InitOverload struct {
+	// L1Source provides L1 data. Accepts *sources.L1Client or compatible wrappers.
+	L1Source L1Client
+
+	// Beacon provides L1 Beacon data. Accepts *sources.L1BeaconClient or compatible wrappers.
+	Beacon BeaconClient
+}
+
 func (n *OpNode) init(ctx context.Context, cfg *config.Config) error {
+	return n.initOverload(ctx, cfg, nil)
+}
+
+func (n *OpNode) initOverload(ctx context.Context, cfg *config.Config, overload *InitOverload) error {
 	n.log.Info("Initializing rollup node", "version", n.appVersion)
+
 	n.initEventSystem()
-	if err := n.initL1BeaconAPI(ctx, cfg); err != nil {
-		return err
+
+	// InitL1BeaconAPI - use provided beacon client or create new one
+	if overload != nil && overload.Beacon != nil {
+		n.log.Info("Using pre-made shared beacon client")
+		n.beacon = overload.Beacon
+	} else {
+		if err := n.initL1BeaconAPI(ctx, cfg); err != nil {
+			return err
+		}
 	}
-	if err := n.initL1Source(ctx, cfg); err != nil {
-		return fmt.Errorf("failed to init L1 Source: %w", err)
+
+	// InitL1Source - use provided L1 client or create new one
+	if overload != nil && overload.L1Source != nil {
+		n.log.Info("Using pre-made shared L1 client")
+		n.l1Source = overload.L1Source
+		n.log.Debug("Skipping L1 config validation for overloaded client (assumed pre-validated)")
+	} else {
+		if err := n.initL1Source(ctx, cfg); err != nil {
+			return fmt.Errorf("failed to init L1 Source: %w", err)
+		}
 	}
+
 	if err := n.initL2(ctx, cfg); err != nil {
 		return fmt.Errorf("failed to init L2: %w", err)
 	}
