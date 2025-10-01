@@ -55,13 +55,6 @@ func (o *Opnode) P2P() p2p.Node {
 var _ services.RollupNode = (*Opnode)(nil)
 
 func NewOpnode(l log.Logger, c *config.Config, errFn func(error)) (*Opnode, error) {
-	return NewOpnodeWithOverload(l, c, errFn, nil)
-}
-
-// NewOpnodeWithOverload creates a new Opnode with optional initialization overloads.
-// This allows callers to inject pre-made resources (e.g., shared L1Client) to avoid
-// duplicating connections and caches across multiple nodes.
-func NewOpnodeWithOverload(l log.Logger, c *config.Config, errFn func(error), overload *rollupNode.InitOverload) (*Opnode, error) {
 	var cycle cliapp.Lifecycle
 	c.Cancel = func(errCause error) {
 		l.Warn("node requested early shutdown!", "err", errCause)
@@ -74,7 +67,7 @@ func NewOpnodeWithOverload(l log.Logger, c *config.Config, errFn func(error), ov
 			l.Warn("closed op-node!")
 		}()
 	}
-	node, err := rollupNode.NewWithOverload(context.Background(), c, l, "", metrics.NewMetrics(""), overload)
+	node, err := rollupNode.New(context.Background(), c, l, "", metrics.NewMetrics(""))
 	if err != nil {
 		return nil, err
 	}
