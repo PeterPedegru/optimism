@@ -47,7 +47,3 @@ func ConnectP2P(ctx context.Context, require *testreq.Assertions, initiator RpcC
 	require.NoError(initiator.CallContext(ctx, &peerAdded, "admin_addPeer", targetInfo.Enode), "add peer")
 	require.True(peerAdded, "should have added peer successfully")
 }
-
-type peer struct {
-	ID string `json:"id"`
-}
