@@ -53,6 +53,14 @@ func (el *L2ELNode) BlockRefByLabel(label eth.BlockLabel) eth.L2BlockRef {
 	return block
 }
 
+func (el *L2ELNode) Status() (eth.L2BlockRef, eth.L2BlockRef, eth.L2BlockRef) {
+	unsafe := el.BlockRefByLabel(eth.Unsafe)
+	safe := el.BlockRefByLabel(eth.Safe)
+	finalized := el.BlockRefByLabel(eth.Finalized)
+
+	return unsafe, safe, finalized
+}
+
 func (el *L2ELNode) AdvancedFn(label eth.BlockLabel, block uint64) CheckFunc {
 	return func() error {
 		initial := el.BlockRefByLabel(label)

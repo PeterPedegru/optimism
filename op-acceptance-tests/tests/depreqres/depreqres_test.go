@@ -32,7 +32,7 @@ func XTestDeprecateReqResCLSync_ELSequencer(gt *testing.T) {
 
 	l.Info("test completed")
 }
-func XTestDeprecateReqResCLSync_DisableGossip(gt *testing.T) {
+func TestDeprecateReqResCLSync_DisableGossip(gt *testing.T) {
 	t := devtest.SerialT(gt)
 	sys := presets.NewSingleChainMultiNode(t)
 	require := t.Require()
@@ -70,16 +70,20 @@ func XTestDeprecateReqResCLSync_DisableGossip(gt *testing.T) {
 
 	ssA := sys.L2CL.SyncStatus()
 	ssB := sys.L2CLB.SyncStatus()
+	elUnsafe, elSafe, elFinalized := sys.L2ELB.Status()
 
 	l.Info("anteva L2CL status", "unsafeL2", ssA.UnsafeL2.ID(), "safeL2", ssA.SafeL2.ID())
+	l.Info("anteva L2ELB status", "unsafeL2", elUnsafe.ID(), "safeL2", elSafe.ID(), "finalizedL2", elFinalized.ID())
 	l.Info("anteva L2CLB status", "unsafeL2", ssB.UnsafeL2.ID(), "safeL2", ssB.SafeL2.ID())
 
 	time.Sleep(30 * time.Second)
 
 	ssA = sys.L2CL.SyncStatus()
 	ssB = sys.L2CLB.SyncStatus()
+	elUnsafe, elSafe, elFinalized = sys.L2ELB.Status()
 
 	l.Info("anteva L2CL status - after sleep", "unsafeL2", ssA.UnsafeL2.ID(), "safeL2", ssA.SafeL2.ID())
+	l.Info("anteva L2ELB status - after sleep", "unsafeL2", elUnsafe.ID(), "safeL2", elSafe.ID(), "finalizedL2", elFinalized.ID())
 	l.Info("anteva L2CLB status - after sleep", "unsafeL2", ssB.UnsafeL2.ID(), "safeL2", ssB.SafeL2.ID())
 
 	sys.L2Batcher.Start()
