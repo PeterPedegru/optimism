@@ -1,4 +1,4 @@
-package depreqres
+package common
 
 import (
 	"testing"
@@ -7,20 +7,21 @@ import (
 	"github.com/ethereum-optimism/optimism/op-devstack/devtest"
 	"github.com/ethereum-optimism/optimism/op-devstack/dsl"
 	"github.com/ethereum-optimism/optimism/op-devstack/presets"
+	"github.com/ethereum-optimism/optimism/op-node/rollup/sync"
 	"github.com/ethereum-optimism/optimism/op-supervisor/supervisor/types"
 )
 
-func TestUnsafeChainStalling_DisabledReqRespSync(gt *testing.T) {
+func UnsafeChainStalling_DisabledReqRespSync(gt *testing.T, syncMode sync.Mode, sleep time.Duration) {
 	t := devtest.SerialT(gt)
 	sys := presets.NewSingleChainMultiNode(t)
 	require := t.Require()
-	l := t.Logger()
+	l := t.Logger().With("syncmode", syncMode)
 
 	l.Info("Confirm that the CL nodes are progressing the unsafe chain")
-	delta := uint64(3)
+	target := uint64(3)
 	dsl.CheckAll(t,
-		sys.L2CL.AdvancedFn(types.LocalUnsafe, delta, 30),
-		sys.L2CLB.AdvancedFn(types.LocalUnsafe, delta, 30),
+		sys.L2CL.AdvancedFn(types.LocalUnsafe, target, 30),
+		sys.L2CLB.AdvancedFn(types.LocalUnsafe, target, 30),
 	)
 
 	l.Info("Stop the L2 batcher")
@@ -36,7 +37,7 @@ func TestUnsafeChainStalling_DisabledReqRespSync(gt *testing.T) {
 	l.Info("L2CL status before delay", "unsafeL2", ssA_before.UnsafeL2.ID(), "safeL2", ssA_before.SafeL2.ID())
 	l.Info("L2CLB status before delay", "unsafeL2", ssB_before.UnsafeL2.ID(), "safeL2", ssB_before.SafeL2.ID())
 
-	time.Sleep(20 * time.Second)
+	time.Sleep(sleep)
 
 	ssA_after := sys.L2CL.SyncStatus()
 	ssB_after := sys.L2CLB.SyncStatus()
@@ -51,6 +52,6 @@ func TestUnsafeChainStalling_DisabledReqRespSync(gt *testing.T) {
 	sys.L2CLB.ConnectPeer(sys.L2CL)
 	sys.L2CL.ConnectPeer(sys.L2CLB)
 
-	l.Info("Confirm that the unsafe chain for L2CLB can advance")
-	sys.L2CLB.Advanced(types.LocalUnsafe, delta, 30)
+	l.Info("Confirm that the unsafe chain for L2CLB is not stalled, since ELSync is enabled on L2CLB")
+	sys.L2CLB.Reached(types.LocalUnsafe, ssA_after.UnsafeL2.Number, 30)
 }

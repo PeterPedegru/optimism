@@ -105,15 +105,20 @@ func (s *SyncDeriver) OnEvent(ctx context.Context, ev event.Event) bool {
 
 func (s *SyncDeriver) OnUnsafeL2Payload(ctx context.Context, envelope *eth.ExecutionPayloadEnvelope) {
 	// If we are doing CL sync or done with engine syncing, fallback to the unsafe payload queue & CL P2P sync.
-	if s.SyncCfg.SyncMode == sync.CLSync || !s.Engine.IsEngineSyncing() {
+	if s.SyncCfg.SyncMode == sync.CLSync {
+		s.Log.Info("anteva OnUnsafeL2Payload, CLSync", "id", envelope.ExecutionPayload.ID())
 		s.Log.Info("Optimistically queueing unsafe L2 execution payload", "id", envelope.ExecutionPayload.ID())
 		s.Engine.AddUnsafePayload(ctx, envelope)
-	} else if s.SyncCfg.SyncMode == sync.ELSync {
+	}
+
+	if s.SyncCfg.SyncMode == sync.ELSync {
+		s.Log.Info("anteva OnUnsafeL2Payload, EL sync", "id", envelope.ExecutionPayload.ID())
 		ref, err := derive.PayloadToBlockRef(s.Config, envelope.ExecutionPayload)
 		if err != nil {
 			s.Log.Info("Failed to turn execution payload into a block ref", "id", envelope.ExecutionPayload.ID(), "err", err)
 			return
 		}
+		s.Log.Info("anteva OnUnsafeL2Payload, EL sync", "id", envelope.ExecutionPayload.ID(), "ref", ref, "unsafeL2Head", s.Engine.UnsafeL2Head())
 		if ref.Number <= s.Engine.UnsafeL2Head().Number {
 			return
 		}

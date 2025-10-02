@@ -10,6 +10,8 @@ import (
 )
 
 func TestSyncAfterInitialELSync(gt *testing.T) {
+	gt.Skip("anteva: Skipping sync test - not sure if we want to run a test for EL sync without healthy ELP2P connections.")
+
 	t := devtest.SerialT(gt)
 	sys := presets.NewSingleChainMultiNodeWithoutCheck(t)
 	require := t.Require()

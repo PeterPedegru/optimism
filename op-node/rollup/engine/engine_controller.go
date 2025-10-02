@@ -351,7 +351,7 @@ func (e *EngineController) checkNewPayloadStatus(status eth.ExecutePayloadStatus
 		// Allow SYNCING and ACCEPTED if engine EL sync is enabled
 		return status == eth.ExecutionValid || status == eth.ExecutionSyncing || status == eth.ExecutionAccepted
 	}
-	return status == eth.ExecutionValid
+	return status == eth.ExecutionValid || status == eth.ExecutionSyncing
 }
 
 // checkForkchoiceUpdatedStatus checks returned status of engine_forkchoiceUpdatedV1 request for next unsafe payload.
@@ -512,6 +512,7 @@ func (e *EngineController) insertUnsafePayload(ctx context.Context, envelope *et
 	if err != nil {
 		return derive.NewTemporaryError(fmt.Errorf("failed to update insert payload: %w", err))
 	}
+	e.log.Info("anteva engineController.insertUnsafePayload", "ref", ref, "got status", status.Status)
 	if status.Status == eth.ExecutionInvalid {
 		e.emitter.Emit(ctx, PayloadInvalidEvent{
 			Envelope: envelope,
@@ -884,17 +885,16 @@ func (e *EngineController) forceReset(ctx context.Context, localUnsafe, crossUns
 	)
 }
 
-// LowestQueuedUnsafeBlock retrieves the first queued-up L2 unsafe payload, or a zeroed reference if there is none.
-func (e *EngineController) LowestQueuedUnsafeBlock() eth.L2BlockRef {
+func (e *EngineController) PeekUnsafePayload() (*eth.ExecutionPayloadEnvelope, eth.L2BlockRef) {
 	payload := e.unsafePayloads.Peek()
 	if payload == nil {
-		return eth.L2BlockRef{}
+		return nil, eth.L2BlockRef{}
 	}
 	ref, err := derive.PayloadToBlockRef(e.rollupCfg, payload.ExecutionPayload)
 	if err != nil {
-		return eth.L2BlockRef{}
+		return nil, eth.L2BlockRef{}
 	}
-	return ref
+	return payload, ref
 }
 
 // onInvalidPayload checks if the first next-up payload matches the invalid payload.
@@ -994,7 +994,7 @@ func (e *EngineController) AddUnsafePayload(ctx context.Context, envelope *eth.E
 	}
 	p := e.unsafePayloads.Peek()
 	e.metrics.RecordUnsafePayloadsBuffer(uint64(e.unsafePayloads.Len()), e.unsafePayloads.MemSize(), p.ExecutionPayload.ID())
-	e.log.Trace("Next unsafe payload to process", "next", p.ExecutionPayload.ID(), "timestamp", uint64(p.ExecutionPayload.Timestamp))
+	e.log.Info("Next unsafe payload to process", "next", p.ExecutionPayload.ID(), "timestamp", uint64(p.ExecutionPayload.Timestamp))
 
 	// request forkchoice update directly so we can process the payload
 	e.requestForkchoiceUpdate(ctx)
