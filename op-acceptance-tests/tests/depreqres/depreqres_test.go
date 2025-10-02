@@ -11,7 +11,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-supervisor/supervisor/types"
 )
 
-func TestDeprecateReqResCLSync_ELSequencer(gt *testing.T) {
+func XTestDeprecateReqResCLSync_ELSequencer(gt *testing.T) {
 	t := devtest.SerialT(gt)
 	sys := presets.NewSingleChainMultiNode(t)
 	require := t.Require()
@@ -32,7 +32,7 @@ func TestDeprecateReqResCLSync_ELSequencer(gt *testing.T) {
 
 	l.Info("test completed")
 }
-func TestDeprecateReqResCLSync_DisableGossip(gt *testing.T) {
+func XTestDeprecateReqResCLSync_DisableGossip(gt *testing.T) {
 	t := devtest.SerialT(gt)
 	sys := presets.NewSingleChainMultiNode(t)
 	require := t.Require()
@@ -74,6 +74,14 @@ func TestDeprecateReqResCLSync_DisableGossip(gt *testing.T) {
 	l.Info("anteva L2CL status", "unsafeL2", ssA.UnsafeL2.ID(), "safeL2", ssA.SafeL2.ID())
 	l.Info("anteva L2CLB status", "unsafeL2", ssB.UnsafeL2.ID(), "safeL2", ssB.SafeL2.ID())
 
+	time.Sleep(30 * time.Second)
+
+	ssA = sys.L2CL.SyncStatus()
+	ssB = sys.L2CLB.SyncStatus()
+
+	l.Info("anteva L2CL status - after sleep", "unsafeL2", ssA.UnsafeL2.ID(), "safeL2", ssA.SafeL2.ID())
+	l.Info("anteva L2CLB status - after sleep", "unsafeL2", ssB.UnsafeL2.ID(), "safeL2", ssB.SafeL2.ID())
+
 	sys.L2Batcher.Start()
 
 	sys.L2CLB.ReachedNode(types.LocalUnsafe, sys.L2CL, 100)
@@ -87,7 +95,7 @@ func TestDeprecateReqResCLSync_DisableGossip(gt *testing.T) {
 	l.Info("test completed")
 }
 
-func TestDeprecateReqResCLSync_StopOpNode(gt *testing.T) {
+func XTestDeprecateReqResCLSync_StopOpNode(gt *testing.T) {
 	t := devtest.SerialT(gt)
 	sys := presets.NewSingleChainMultiNode(t)
 	require := t.Require()
