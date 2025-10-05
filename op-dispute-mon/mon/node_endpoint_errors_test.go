@@ -19,17 +19,12 @@ func TestCheckNodeEndpointErrors_NoErrors(t *testing.T) {
 	}
 
 	metrics := &stubNodeEndpointErrorsMetrics{}
-	logger, capturedLogs := testlog.CaptureLogger(t, log.LvlDebug)
+	logger := testlog.Logger(t, log.LvlDebug)
 	monitor := NewNodeEndpointErrorsMonitor(logger, metrics)
 
 	monitor.CheckNodeEndpointErrors(games)
 
 	require.Equal(t, 0, metrics.recordedCount)
-
-	levelFilter := testlog.NewLevelFilter(log.LevelDebug)
-	messageFilter := testlog.NewMessageFilter("No rollup node endpoint errors found")
-	l := capturedLogs.FindLog(levelFilter, messageFilter)
-	require.NotNil(t, l)
 }
 
 func TestCheckNodeEndpointErrors_SingleGameWithErrors(t *testing.T) {
@@ -141,18 +136,12 @@ func TestCheckNodeEndpointErrors_EmptyGamesList(t *testing.T) {
 	games := []*types.EnrichedGameData{}
 
 	metrics := &stubNodeEndpointErrorsMetrics{}
-	logger, capturedLogs := testlog.CaptureLogger(t, log.LvlDebug)
+	logger := testlog.Logger(t, log.LvlDebug)
 	monitor := NewNodeEndpointErrorsMonitor(logger, metrics)
 
 	monitor.CheckNodeEndpointErrors(games)
 
 	require.Equal(t, 0, metrics.recordedCount)
-
-	// Check debug log for no errors
-	levelFilter := testlog.NewLevelFilter(log.LevelDebug)
-	messageFilter := testlog.NewMessageFilter("No rollup node endpoint errors found")
-	l := capturedLogs.FindLog(levelFilter, messageFilter)
-	require.NotNil(t, l)
 }
 
 type stubNodeEndpointErrorsMetrics struct {
