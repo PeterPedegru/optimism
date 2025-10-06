@@ -185,6 +185,9 @@ func (n *OpNode) init(ctx context.Context, cfg *config.Config) error {
 	return n.initOverload(ctx, cfg, nil)
 }
 
+// initOverload is the main initialization function for the OpNode.
+// it calls initialization functions for each component of the OpNode.
+// if resources are provided in the overload, they are used instead of calling the default initialization functions.
 func (n *OpNode) initOverload(ctx context.Context, cfg *config.Config, overload *InitOverload) error {
 	n.log.Info("Initializing rollup node", "version", n.appVersion)
 
